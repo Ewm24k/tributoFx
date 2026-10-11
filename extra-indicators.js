@@ -91,7 +91,7 @@
     }
   };
 
-  // 3. DeMarker (MT5 Standard Oscillator) — FIXED
+  // 3. DeMarker (MT5 Standard Oscillator)
   window.TFX_EXTRA_INDICATORS.demarker = {
     name: 'DeMarker (MT5)',
     params: [
@@ -189,4 +189,39 @@
       };
     }
   };
+
+  // 7. OsMA Indicator (Moving Average of Oscillator) — Default: 12, 6, 9
+  window.TFX_EXTRA_INDICATORS.osma = {
+    name: 'OsMA (12, 6, 9)',
+    params: [
+      { k: 'f', l: 'Fast EMA', t: 'num', d: 12, min: 1 },
+      { k: 's', l: 'Slow EMA', t: 'num', d: 6, min: 1 },
+      { k: 'sig', l: 'Signal SMA', t: 'num', d: 9, min: 1 }
+    ],
+    run: (c, p) => {
+      const fastEMA = math.ema(c.close, p.f);
+      const slowEMA = math.ema(c.close, p.s);
+      const n = c.close.length;
+      const macd = nanArr(n);
+      for (let i = 0; i < n; i++) {
+        if (isF(fastEMA[i]) && isF(slowEMA[i])) {
+          macd[i] = fastEMA[i] - slowEMA[i];
+        }
+      }
+      const signal = math.sma(macd, p.sig);
+      const osma = nanArr(n);
+      for (let i = 0; i < n; i++) {
+        if (isF(macd[i]) && isF(signal[i])) {
+          osma[i] = macd[i] - signal[i];
+        }
+      }
+      const colors = osma.map((v, i) => !isF(v) ? null : v >= (osma[i - 1] || 0) ? '#00e5a0' : '#ff3d71');
+      return {
+        overlay: false,
+        plots: [{ title: 'OsMA', values: osma, color: '#00e5a0', type: 'histogram', colors }],
+        hlines: [{ price: 0, color: '#4a5380', title: '0.0' }]
+      };
+    }
+  };
+
 })();
