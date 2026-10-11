@@ -38,7 +38,7 @@ input[type=checkbox]{accent-color:var(--violet)}
 .muted{color:var(--muted)}
 .up{color:var(--up)} .dn{color:var(--dn)}
 
-/* Rigid Layout: Tools (46px) | Center Stage (1fr) | Account Panel (350px) */
+/* Strict 3-Column Grid Layout: Tools (46px) | Center Stage (1fr) | Account Panel (350px) */
 .main{display:grid;grid-template-columns:46px minmax(0, 1fr) 350px;min-height:0;height:100%;transition:grid-template-columns .15s ease}
 .main.side-collapsed{grid-template-columns:46px minmax(0, 1fr) 0px}
 .main.side-collapsed .side{display:none}
@@ -227,7 +227,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     <div class="logo"><i class="mark"></i><div><b>Tributo</b><span> Fx</span></div></div>
     
     <div class="sym-box">
-      <input id="symInput" value="XAUUSD" size="10" readonly title="Click to open Instrument Selector">
+      <input id="symInput" value="XAUUSD" size="10" readonly title="Click to open Bloomberg Terminal Instrument Selector">
     </div>
 
     <div class="seg" id="tfSeg"></div>
@@ -312,7 +312,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <button id="btnFit" title="Fit chart">⤢</button>
     </div>
 
-    <!-- Center Stage: Houses Left Indicator Dock and Main Chart in Fixed Proportion -->
+    <!-- Center Stage -->
     <div class="center-stage">
       <div id="indDock" class="ind-dock" style="display:none">
         <div class="ind-dock-head">
@@ -348,7 +348,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       </div>
     </div>
 
-    <!-- Right Trading / Account Panel -->
+    <!-- Right Trading Panel -->
     <aside class="side">
       <div class="card">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
@@ -502,12 +502,12 @@ const LW = window.LightweightCharts;
 if (!LW) return;
 
 /* =====================================================================
-   CORE HELPERS (GUARANTEED EXPLICIT DEFINITIONS IN SCOPE)
+   CORE HELPERS (GUARANTEED EXPLICIT DEFINITIONS)
    ===================================================================== */
 const isF = Number.isFinite;
 const nanArr = n => new Array(n).fill(NaN);
 
-// 1. Columnar Array Converter
+// 1. Columnar Array Converter (Handles object arrays to columnar arrays)
 const colsOf = cs => {
   const n = cs ? cs.length : 0;
   const o = {
@@ -530,6 +530,7 @@ const colsOf = cs => {
   return o;
 };
 
+// Aliased to window for zero-scope-failure guarantee
 window.colsOf = colsOf;
 window.colsof = colsOf;
 
@@ -568,7 +569,7 @@ const INSTRUMENTS = [
 ];
 
 /* =====================================================================
-   MATH & INDICATORS ENGINE
+   FULL MATHEMATICAL LIBRARY (TA)
    ===================================================================== */
 const ta = {
   sma(src, len) {
@@ -594,6 +595,15 @@ const ta = {
   },
   rma(src, len) { return ta.ema(src, len, 1 / len); },
   smma(src, len) { return ta.rma(src, len); },
+  wma(src, len) {
+    const n = src.length, out = nanArr(n), den = len * (len + 1) / 2;
+    for (let i = len - 1; i < n; i++) {
+      let s = 0, ok = true;
+      for (let j = 0; j < len; j++) { const v = src[i - len + 1 + j]; if (!isF(v)) { ok = false; break; } s += v * (j + 1); }
+      if (ok) out[i] = s / den;
+    }
+    return out;
+  },
   stdev(src, len) {
     const n = src.length, out = nanArr(n);
     let sum = 0, sumSq = 0, bad = 0;
@@ -678,6 +688,22 @@ const ta = {
       if (dir === 1) up[i] = flb; else down[i] = fub;
     }
     return { up, down };
+  },
+  crossover(a, b) {
+    const n = Array.isArray(a) ? a.length : b.length, out = new Array(n).fill(false);
+    for (let i = 1; i < n; i++) {
+      const a0 = a[i - 1], a1 = a[i], b0 = b[i - 1], b1 = b[i];
+      out[i] = isF(a0) && isF(a1) && isF(b0) && isF(b1) && a1 > b1 && a0 <= b0;
+    }
+    return out;
+  },
+  crossunder(a, b) {
+    const n = Array.isArray(a) ? a.length : b.length, out = new Array(n).fill(false);
+    for (let i = 1; i < n; i++) {
+      const a0 = a[i - 1], a1 = a[i], b0 = b[i - 1], b1 = b[i];
+      out[i] = isF(a0) && isF(a1) && isF(b0) && isF(b1) && a1 < b1 && a0 >= b0;
+    }
+    return out;
   }
 };
 
@@ -843,6 +869,7 @@ const BUILTIN = {
 
 // 2. INDICATOR COMPUTATION ENGINE (ROBUST DEFINITION WITH 1-ARG & 2-ARG SUPPORT)
 function computeInd(v, ind) {
+  // Support both computeInd(v, ind) and computeInd(ind)
   if (!ind && v && v.type) {
     ind = v;
     v = (typeof V1 !== 'undefined') ? V1 : null;
@@ -933,24 +960,22 @@ function initDomCache() {
 }
 
 /* =====================================================================
-   INDEXEDDB PERSISTENCE (NON-BLOCKING TIMEOUT GUARANTEE)
+   INDEXEDDB PERSISTENCE (AUTO-REPAIRING)
    ===================================================================== */
 const IDB = {
   db: null,
   async init() {
     if (this.db) return this.db;
     return new Promise(resolve => {
-      const timer = setTimeout(() => resolve(null), 800);
       try {
-        const req = indexedDB.open('TributoFxDB_v11', 1);
-        req.onblocked = () => { clearTimeout(timer); resolve(null); };
+        const req = indexedDB.open('TributoFxDB_v10', 1);
         req.onupgradeneeded = e => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains('candles')) db.createObjectStore('candles');
         };
-        req.onsuccess = e => { clearTimeout(timer); this.db = e.target.result; resolve(this.db); };
-        req.onerror = () => { clearTimeout(timer); resolve(null); };
-      } catch { clearTimeout(timer); resolve(null); }
+        req.onsuccess = e => { this.db = e.target.result; resolve(this.db); };
+        req.onerror = () => resolve(null);
+      } catch { resolve(null); }
     });
   },
   async get(key) {
@@ -1022,12 +1047,7 @@ function createLightweightChartInstance(containerId) {
   cSeries.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.22 } });
   const vSeries = c.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: '', lastValueVisible: false, priceLineVisible: false });
   vSeries.priceScale().applyOptions({ scaleMargins: { top: 0.82, bottom: 0 } });
-  
-  // Safe marker API instantiation compatible with all LWC versions
-  const mApi = (typeof LW.createSeriesMarkers === 'function')
-    ? LW.createSeriesMarkers(cSeries, [])
-    : { setMarkers: m => { if (typeof cSeries.setMarkers === 'function') cSeries.setMarkers(m); } };
-
+  const mApi = LW.createSeriesMarkers(cSeries, []);
   return { chart: c, candleSeries: cSeries, volSeries: vSeries, markersApi: mApi };
 }
 
@@ -1058,7 +1078,6 @@ function setPrecision() {
   C1.candleSeries.applyOptions(pOpt); C2.candleSeries.applyOptions(pOpt);
 }
 const fmtP = v => (isF(v) ? v : 0).toLocaleString('en-US', { minimumFractionDigits: S.prec, maximumFractionDigits: S.prec });
-
 function zoomChart(factor) {
   const ts = getActiveChart().chart.timeScale(), r = ts.getVisibleLogicalRange();
   if (!r) return;
@@ -1069,7 +1088,7 @@ function zoomChart(factor) {
 $('chartWrap').addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 
 /* =====================================================================
-   ROBUST MARKET DATA ENGINE (FAST LOAD & ZERO-FAIL GUARANTEE)
+   DATA FETCHING ENGINE (FAST & GUARANTEED)
    ===================================================================== */
 function toApiSymbol(sym) {
   if (sym === 'XAUUSD' || sym === 'GOLD') return 'PAXGUSDT';
@@ -1080,7 +1099,7 @@ function toApiSymbol(sym) {
   return sym;
 }
 
-async function fetchWithTimeout(url, timeoutMs = 2500) {
+async function fetchWithTimeout(url, timeoutMs = 2800) {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
@@ -1092,27 +1111,24 @@ async function fetchWithTimeout(url, timeoutMs = 2500) {
   }
 }
 
-// Fetch via direct connection and public CORS gateways
 async function fetchBinanceKlines(target, tf, startTime, endTime, limit = 1000) {
   const query = `symbol=${target}&interval=${tf}&startTime=${startTime}&endTime=${endTime}&limit=${limit}`;
   const targets = [
     `https://data-api.binance.vision/api/v3/klines?${query}`,
-    `https://api.binance.com/api/v3/klines?${query}`,
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(`https://api.binance.com/api/v3/klines?${query}`)}`
+    `https://api.binance.com/api/v3/klines?${query}`
   ];
 
   for (const url of targets) {
     try {
-      const data = await fetchWithTimeout(url, 2200);
+      const data = await fetchWithTimeout(url, 2500);
       if (Array.isArray(data) && data.length > 0) {
         return data.map(k => ({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));
       }
-    } catch { /* try next endpoint */ }
+    } catch { /* try next */ }
   }
   return [];
 }
 
-// Realistic continuous market generator (Zero-hang guarantee)
 function generateMarketCandles(sym, tfSec, startSec, endSec) {
   let h = 2166136261; for (const ch of sym) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
   let seed = h >>> 0; const rnd = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -1175,7 +1191,7 @@ async function loadData(tf, forceRefresh = false) {
 
   if (S.source !== 'demo') {
     try {
-      if (dom.loadTxt) dom.loadTxt.textContent = `Connecting to market data feed (${S.symbol})...`;
+      if (dom.loadTxt) dom.loadTxt.textContent = `Connecting to market feed (${S.symbol})...`;
       
       const batches = [];
       const batchSpan = 1000 * tfMs;
@@ -1198,7 +1214,7 @@ async function loadData(tf, forceRefresh = false) {
         await IDB.set(key, res);
         return res;
       }
-    } catch { /* fallback to generator */ }
+    } catch { /* fallback */ }
   }
 
   const res = { 
@@ -1368,6 +1384,17 @@ function syncDockedChartsRange() {
     try { d.chart.timeScale().setVisibleLogicalRange(r); } catch {}
   });
 }
+
+const bsearch = (v, t) => {
+  const cs = v.candles; let lo = 0, hi = cs.length - 1;
+  while (lo <= hi) {
+    const m = (lo + hi) >> 1;
+    if (cs[m].time === t) return m;
+    if (cs[m].time < t) lo = m + 1;
+    else hi = m - 1;
+  }
+  return -1;
+};
 
 function syncDockedCrosshair(time, logical) {
   if (!dockedIndicators.length) return;
@@ -1630,7 +1657,526 @@ function advanceSlave(v) {
 }
 
 /* =====================================================================
-   TOOLBAR WIRING, BUTTON LISTENERS & STARTUP
+   REPLAY LOOP
+   ===================================================================== */
+const pickN = () => {
+  if (S.speed === 'real') { const sec = master().tfSec || 60; return sec <= 60 ? sec : Math.min(120, Math.max(20, Math.round(sec / 5))); }
+  const sp = +S.speed || 2;
+  if (sp <= 0.05) return 20;
+  if (sp <= 0.1) return 10;
+  if (sp <= 0.5) return 8;
+  if (sp >= 30) return 1;
+  if (sp >= 10) return 2;
+  if (sp >= 5) return 4;
+  return 8;
+};
+
+function tickFrame() {
+  const m = master(), cs = m.candles;
+  if (R.i >= cs.length) { pause(); toast('End of data'); return false; }
+  if (R.k === 0) R.N = pickN();
+  const c = cs[R.i], prev = Pz.last;
+  R.k++;
+  const part = partialCandle(c, R.k, R.N);
+  m.c.candleSeries.update(candleBar(part)); m.c.volSeries.update(volBar(c, part.volume));
+  let lo = Math.min(prev, part.close), hi = Math.max(prev, part.close);
+  if (R.k === 1) { R.ph = c.open; R.pl = c.open; lo = Math.min(lo, c.open); hi = Math.max(hi, c.open); }
+  if (part.high > R.ph) { hi = Math.max(hi, part.high); R.ph = part.high; }
+  if (part.low < R.pl) { lo = Math.min(lo, part.low); R.pl = part.low; }
+  updateBidAsk(part.close);
+  Pz.time = c.time;
+  checkStops(lo, hi);
+  if (R.k >= R.N) {
+    const j = R.i; R.i++; R.k = 0;
+    for (const ind of m.IND) ind.series?.forEach((sr, i) => sr.update(plotPoint(m, ind.spec.plots[i], j)));
+    if (isDockActive()) {
+      dockedIndicators.forEach(d => {
+        d.seriesList.forEach((sr, i) => sr.update(plotPoint(m, d.ind.spec.plots[i], j)));
+      });
+    }
+    markersDirty = true;
+  }
+  m.done = R.i; m.form = R.k > 0 ? part : null;
+  for (const v of viewsNeeded()) if (v !== m) advanceSlave(v);
+  scheduleUiUpdate();
+  return true;
+}
+
+function stepCandle() { pause(); if (!tickFrame()) return; while (R.k !== 0) tickFrame(); refreshMarkers(true); }
+function stepTick() { pause(); tickFrame(); }
+function play() { if (!S.replayOn || R.playing) return; R.playing = true; $('btnPlay').textContent = '⏸ Pause'; loop(); }
+function pause() { R.playing = false; clearTimeout(R.timer); $('btnPlay').textContent = '▶ Play'; }
+function loop() {
+  if (!R.playing) return;
+  const isReal = S.speed === 'real', tfs = master().tfSec || 60;
+  const effSpeed = isReal ? (1 / Math.max(1, tfs)) : (+S.speed || 2);
+  if (effSpeed >= 60) {
+    R.N = 1;
+    const batch = Math.min(25, Math.max(1, Math.round(effSpeed / 50)));
+    for (let b = 0; b < batch; b++) { if (!tickFrame()) return; }
+    R.timer = setTimeout(loop, 16);
+    return;
+  }
+  if (!tickFrame()) return;
+  const tickDelay = isReal ? Math.max(50, Math.round((tfs * 1000) / R.N)) : Math.max(2, Math.round(1000 / (effSpeed * R.N)));
+  R.timer = setTimeout(loop, tickDelay);
+}
+const togglePlay = () => R.playing ? pause() : play();
+
+function placeReplay(idx) {
+  const m = master(), cs = m.candles;
+  if (!cs || !cs.length) return;
+  idx = Math.max(1, Math.min(cs.length - 1, idx));
+  R.i = idx; R.k = 0;
+  const refCandle = cs[idx - 1] || cs[0];
+  updateBidAsk(refCandle.close);
+  Pz.time = refCandle.time;
+  renderAll();
+  for (const v of viewsNeeded()) {
+    if (v.done > 0) {
+      v.c.chart.timeScale().setVisibleLogicalRange({ from: v.done - 110, to: v.done + 40 });
+    }
+  }
+}
+
+function startReplay() {
+  pause();
+  if (A.positions.length) closeAll('Replay restart');
+  const cs = master().candles;
+  if (!cs || !cs.length) return;
+  const targetDateStr = $('repDate').value || '2026-01-01';
+  const ts = new Date(targetDateStr + 'T00:00:00Z').getTime() / 1000;
+  let idx = cs.findIndex(c => c.time >= ts);
+  if (idx < 0) idx = Math.floor(cs.length * 0.5);
+  const minIdx = Math.min(50, Math.max(1, Math.floor(cs.length * 0.1)));
+  idx = Math.max(minIdx, Math.min(cs.length - 1, idx));
+  placeReplay(idx);
+}
+
+function positionAt(cursorEnd) {
+  const m = master(), cs = m.candles;
+  if (!cs || !cs.length) return;
+  let n = 0;
+  while (n < cs.length && cs[n].time + m.tfSec <= cursorEnd) n++;
+  n = Math.max(1, Math.min(cs.length - 1, n));
+  placeReplay(n);
+}
+function showAll() { pause(); renderAll(); VIEWS.forEach(v => v.c.chart.timeScale().fitContent()); }
+
+/* =====================================================================
+   TRADING ENGINE & P/L
+   ===================================================================== */
+const feePct = () => Math.max(0, parseFloat($('ordFee').value) || 0);
+const levX = () => Math.max(1, parseFloat($('ordLev').value) || 1);
+const dirOf = p => p.side === 'long' ? 1 : -1;
+
+function uplOf(p) {
+  if (!Pz.last) return 0;
+  const exitPrice = p.side === 'long' ? (Pz.bid || Pz.last) : (Pz.ask || Pz.last);
+  return (exitPrice - p.entry) * p.qty * dirOf(p);
+}
+
+const usedMargin = () => A.positions.reduce((s, p) => s + p.notional / p.lev, 0);
+const equity = () => A.balance + A.positions.reduce((s, p) => s + uplOf(p), 0);
+
+function openPosition(side) {
+  if (!S.replayOn) return toast('Turn on Practice replay to trade');
+  if (!Pz.last) return toast('No price yet');
+  const notional = parseFloat($('ordSize').value);
+  if (!(notional > 0)) return toast('Enter a size');
+  const lev = levX(), margin = notional / lev;
+  if (margin > equity() - usedMargin()) return toast('Not enough free margin');
+  
+  const execPrice = side === 'long' ? (Pz.ask || Pz.last) : (Pz.bid || Pz.last);
+  const fee = notional * feePct() / 100;
+  const slPct = parseFloat($('ordSL').value), tpPct = parseFloat($('ordTP').value), d = side === 'long' ? 1 : -1;
+  const pos = { id: A.nextId++, symbol: S.symbol, side, qty: notional / execPrice, notional, lev, entry: execPrice, fees: fee, openTime: Pz.time,
+    sl: slPct > 0 ? execPrice * (1 - d * slPct / 100) : null, tp: tpPct > 0 ? execPrice * (1 + d * tpPct / 100) : null };
+  A.balance -= fee; A.positions.push(pos); saveAcct();
+  syncPriceLines(); renderPositions(); updateAll(); try { refreshMarkers(true); } catch (err) { console.error(err); }
+  toast(`Filled: ${side.toUpperCase()} @ ${fmtP(execPrice)}`);
+}
+
+function closePosition(pos, price, reason) {
+  const exitPrice = pos.side === 'long' ? (Pz.bid || price) : (Pz.ask || price);
+  const gross = (exitPrice - pos.entry) * pos.qty * dirOf(pos), exitFee = exitPrice * pos.qty * feePct() / 100;
+  A.balance += gross - exitFee;
+  A.history.unshift({ id: pos.id, symbol: pos.symbol, side: pos.side, qty: pos.qty, notional: pos.notional, entry: pos.entry, exit: exitPrice,
+    openTime: pos.openTime, closeTime: Pz.time, pnl: gross - pos.fees - exitFee, reason });
+  A.positions = A.positions.filter(p => p !== pos); saveAcct();
+  refreshMarkers(true); syncPriceLines(); renderPositions(); renderHistory(); updateAll();
+}
+function closeAll(reason) { [...A.positions].forEach(p => closePosition(p, Pz.last, reason)); }
+
+function checkStops(lo, hi) {
+  for (const p of [...A.positions]) {
+    const slHit = p.sl != null && (p.side === 'long' ? lo <= p.sl : hi >= p.sl);
+    const tpHit = p.tp != null && (p.side === 'long' ? hi >= p.tp : lo <= p.tp);
+    if (slHit) closePosition(p, p.sl, 'Stop loss'); else if (tpHit) closePosition(p, p.tp, 'Take profit');
+  }
+  if (A.positions.length && equity() <= usedMargin() * 0.1) { closeAll('Liquidated'); toast('Margin call'); }
+}
+
+/* =====================================================================
+   DRAGGABLE TP/SL OVERLAY
+   ===================================================================== */
+const pipSize = price => S.prec >= 3 ? Math.pow(10, -(S.prec - 1)) : (price >= 1000 ? 1 : 0.1);
+const levelPnl = (p, price) => (price - p.entry) * p.qty * dirOf(p) - p.fees - price * p.qty * feePct() / 100;
+let drag = null;
+
+function setLevel(p, kind, price) {
+  const d = dirOf(p), tick = Math.pow(10, -S.prec);
+  if (kind === 'tp') price = d > 0 ? Math.max(price, p.entry + tick) : Math.min(price, p.entry - tick);
+  else price = d > 0 ? Math.min(price, p.entry - tick) : Math.max(price, p.entry + tick);
+  p[kind] = price;
+}
+function startDrag(p, kind, v, armed) {
+  if (p[kind] == null) { const dist = Math.max(p.entry * 0.003, pipSize(p.entry) * 10), d = dirOf(p); p[kind] = kind === 'tp' ? p.entry + d * dist : p.entry - d * dist; }
+  drag = { p, kind, v, armed }; p.ui = false;
+}
+function endDrag() { drag = null; renderPositions(); }
+window.addEventListener('pointermove', e => {
+  if (!drag || !drag.v.layer) return;
+  const r = drag.v.layer.getBoundingClientRect(), pr = drag.v.c.candleSeries.coordinateToPrice(e.clientY - r.top);
+  if (pr != null) setLevel(drag.p, drag.kind, pr);
+});
+window.addEventListener('pointerup', () => { if (drag && !drag.armed) endDrag(); });
+window.addEventListener('pointerdown', () => { if (drag && drag.armed) endDrag(); }, true);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && drag) endDrag(); });
+
+function makePosEls(v, p) {
+  const root = document.createElement('div'); v.layer.append(root);
+  const mkEl = cls => { const d = document.createElement('div'); d.className = cls; root.append(d); return d; };
+  const span = chip => { const t = document.createElement('span'); t.className = 't'; chip.append(t); return t; };
+  const btn = (chip, cls, txt, fn) => { const b = document.createElement('button'); b.className = 'pl-b ' + cls; b.textContent = txt; b.addEventListener('pointerdown', ev => { ev.stopPropagation(); ev.preventDefault(); fn(); }); chip.append(b); return b; };
+  const e = { root, eLine: mkEl('pl-line'), eChip: mkEl('pl-chip'), tLine: mkEl('pl-line'), tChip: mkEl('pl-chip drag'), sLine: mkEl('pl-line'), sChip: mkEl('pl-chip drag') };
+  e.eT = span(e.eChip);
+  e.bTP = btn(e.eChip, 'tp', 'TP', () => startDrag(p, 'tp', v, true));
+  e.bSL = btn(e.eChip, 'sl', 'SL', () => startDrag(p, 'sl', v, true));
+  e.eT.addEventListener('click', () => { p.ui = !p.ui; });
+  e.tT = span(e.tChip); e.sT = span(e.sChip);
+  btn(e.tChip, 'sl', '✕', () => { p.tp = null; renderPositions(); });
+  btn(e.sChip, 'sl', '✕', () => { p.sl = null; renderPositions(); });
+  e.tT.addEventListener('pointerdown', ev => { ev.preventDefault(); startDrag(p, 'tp', v, false); });
+  e.sT.addEventListener('pointerdown', ev => { ev.preventDefault(); startDrag(p, 'sl', v, false); });
+  return e;
+}
+
+function placePos(v, p, e) {
+  const ser = v.c.candleSeries, col = p.side === 'long' ? C.up : C.dn;
+  const put = (line, chip, textEl, price, text, color) => {
+    const y = price == null ? null : ser.priceToCoordinate(price);
+    line.style.display = chip.style.display = y == null ? 'none' : '';
+    if (y == null) return;
+    line.style.top = y + 'px'; line.style.borderTopColor = color;
+    chip.style.top = y + 'px'; chip.style.borderColor = color; chip.style.color = color;
+    if (textEl.textContent !== text) textEl.textContent = text;
+  };
+  const info = (name, price) => `${name} · ${(Math.abs(price - p.entry) / pipSize(p.entry)).toFixed(1)} pips · ${signed(levelPnl(p, price))}`;
+  put(e.eLine, e.eChip, e.eT, p.entry, `${p.side === 'long' ? 'LONG' : 'SHORT'} ${+p.qty.toPrecision(4)} · ${signed(uplOf(p))}`, col);
+  e.bTP.style.display = e.bSL.style.display = p.ui ? '' : 'none';
+  put(e.tLine, e.tChip, e.tT, p.tp, p.tp != null ? info('TP', p.tp) : '', C.up);
+  put(e.sLine, e.sChip, e.sT, p.sl, p.sl != null ? info('SL', p.sl) : '', C.dn);
+}
+
+function layoutPos() {
+  const need = viewsNeeded();
+  for (const v of VIEWS) {
+    if (!v.layer) { v.layer = document.createElement('div'); v.layer.className = 'pl-layer'; $(v.paneId).append(v.layer); v.posEls = new Map(); }
+    const on = need.includes(v);
+    v.layer.style.display = on ? 'block' : 'none';
+    if (!on) continue;
+    const live = new Set();
+    for (const p of A.positions) {
+      live.add(p.id);
+      let e = v.posEls.get(p.id);
+      if (!e) { e = makePosEls(v, p); v.posEls.set(p.id, e); }
+      placePos(v, p, e);
+    }
+    for (const [id, e] of v.posEls) if (!live.has(id)) { e.root.remove(); v.posEls.delete(id); }
+  }
+}
+(function posLoop() { if (A.positions.length || VIEWS.some(v => v.posEls && v.posEls.size)) { try { layoutPos(); } catch (err) { /* ignore */ } } requestAnimationFrame(posLoop); })();
+
+function syncPriceLines() {
+  try { layoutPos(); } catch (err) { console.error(err); }
+  const need = viewsNeeded();
+  for (const v of VIEWS) {
+    const ser = v.c.candleSeries;
+    v.posLines.forEach(l => { try { ser.removePriceLine(l); } catch { /* ignore */ } }); v.posLines = [];
+    if (!need.includes(v)) { if (v.askLine) { try { ser.removePriceLine(v.askLine); } catch { /* ignore */ } v.askLine = null; } continue; }
+    if (S.spreadOn && Pz.ask && Pz.spread > 0) {
+      if (!v.askLine) v.askLine = ser.createPriceLine({ price: Pz.ask, color: 'rgba(255,43,214,0.65)', lineWidth: 1, lineStyle: LW.LineStyle.Dotted, axisLabelVisible: true, title: 'ASK' });
+      else v.askLine.applyOptions({ price: Pz.ask });
+    } else if (v.askLine) { try { ser.removePriceLine(v.askLine); } catch { /* ignore */ } v.askLine = null; }
+    const add = (price, color, style, title) => v.posLines.push(ser.createPriceLine({ price, color, lineWidth: 1, lineStyle: style, axisLabelVisible: true, title }));
+    for (const p of A.positions) {
+      add(p.entry, p.side === 'long' ? C.up : C.dn, LW.LineStyle.Dashed, p.side === 'long' ? 'LONG' : 'SHORT');
+    }
+  }
+}
+
+let uiRafPending = false;
+function scheduleUiUpdate() {
+  if (uiRafPending) return;
+  uiRafPending = true;
+  requestAnimationFrame(() => {
+    uiRafPending = false;
+    updateAll();
+    for (const v of viewsNeeded()) updateLegend(v, null);
+    if (markersDirty) refreshMarkers();
+    redrawRulers();
+  });
+}
+
+const setCls = (e, v) => { e.classList.toggle('up', v > 0); e.classList.toggle('dn', v < 0); };
+function updateAll() {
+  const upl = A.positions.reduce((s, p) => s + uplOf(p), 0), eq = A.balance + upl, um = usedMargin();
+  if (dom.accBal) dom.accBal.textContent = fmtMoney(A.balance);
+  if (dom.accEq) dom.accEq.textContent = fmtMoney(eq);
+  if (dom.accUpl) { dom.accUpl.textContent = signed(upl); setCls(dom.accUpl, upl); }
+  if (dom.accMar) dom.accMar.textContent = fmtMoney(um);
+  if (dom.accFree) dom.accFree.textContent = fmtMoney(eq - um);
+  const net = eq - A.startBal;
+  if (dom.accNet) { dom.accNet.textContent = signed(net); setCls(dom.accNet, net); }
+  
+  if (dom.btnBuy) dom.btnBuy.textContent = 'BUY ' + (Pz.ask ? fmtP(Pz.ask) : (Pz.last ? fmtP(Pz.last) : ''));
+  if (dom.btnSell) dom.btnSell.textContent = 'SELL ' + (Pz.bid ? fmtP(Pz.bid) : (Pz.last ? fmtP(Pz.last) : ''));
+  
+  for (const p of A.positions) {
+    const c = $('pnl' + p.id);
+    if (c) {
+      const u = uplOf(p);
+      c.textContent = signed(u);
+      setCls(c, u);
+    }
+  }
+  
+  if (dom.stPrice) dom.stPrice.textContent = Pz.last ? `${S.symbol}  ${fmtP(Pz.last)}` : '';
+  if (dom.stSpread) dom.stSpread.textContent = S.spreadOn ? `[${S.broker} Spread: ${Pz.spread > 0 ? fmtP(Pz.spread) : '0'}]` : '[Spread: OFF]';
+  
+  const speedLabel = S.speed === 'real' ? `1:1 Real TF (${master().tf})` : (S.speed >= 300 ? '10X Ultra (300 c/s)' : `${S.speed} c/s`);
+  if (dom.repInfo) dom.repInfo.textContent = S.replayOn && Pz.time ? `Replay: ${fmtDT(Pz.time)} · ${master().tf} candle ${R.i}/${master().candles.length} · ⏱ ${speedLabel}` : '';
+}
+
+function renderPositions() {
+  const body = $('posBody'); body.innerHTML = '';
+  if (!A.positions.length) { body.append(el('tr', {}, el('td', { colspan: '7', class: 'muted' }, 'No open positions'))); return; }
+  for (const p of A.positions) {
+    const mk = key => { const i = el('input', { type: 'number', step: 'any', value: p[key] != null ? (+p[key].toFixed(S.prec)) : '' }); i.addEventListener('change', () => { const v = parseFloat(i.value); p[key] = v > 0 ? v : null; syncPriceLines(); }); return i; };
+    body.append(el('tr', {}, el('td', { class: p.side === 'long' ? 'up' : 'dn' }, p.side === 'long' ? 'LONG' : 'SHORT'),
+      el('td', {}, (+p.qty.toPrecision(4)).toString()), el('td', {}, fmtP(p.entry)), el('td', { id: 'pnl' + p.id }, '0'),
+      el('td', {}, mk('sl')), el('td', {}, mk('tp')),
+      el('td', {}, el('button', { class: 'x', title: 'Close', onclick: () => closePosition(p, Pz.last, 'Manual') }, '✕'))));
+  }
+}
+
+function renderHistory() {
+  const h = A.history, wins = h.filter(t => t.pnl > 0), losses = h.filter(t => t.pnl <= 0);
+  const gw = wins.reduce((s, t) => s + t.pnl, 0), gl = Math.abs(losses.reduce((s, t) => s + t.pnl, 0));
+  const kv = (k, v, c) => el('div', { class: 'kv' }, el('span', { class: 'muted' }, k), el('b', { class: c || '' }, v));
+  const st = $('stats'); st.innerHTML = '';
+  const tot = h.reduce((s, t) => s + t.pnl, 0);
+  st.append(kv('Trades', String(h.length)), kv('Win rate', h.length ? (wins.length / h.length * 100).toFixed(1) + '%' : '-'),
+    kv('Total P/L', signed(tot), tot >= 0 ? 'up' : 'dn'), kv('Profit factor', gl > 0 ? (gw / gl).toFixed(2) : (gw > 0 ? '∞' : '-')),
+    kv('Avg win', wins.length ? signed(gw / wins.length) : '-', 'up'), kv('Avg loss', losses.length ? signed(-gl / losses.length) : '-', 'dn'));
+  const body = $('histBody'); body.innerHTML = '';
+  if (!h.length) body.append(el('tr', {}, el('td', { colspan: '5', class: 'muted' }, 'No closed trades yet')));
+  h.slice(0, 100).forEach(t => body.append(el('tr', {}, el('td', { class: t.side === 'long' ? 'up' : 'dn', title: t.symbol + '  ' + fmtDT(t.openTime) + ' → ' + fmtDT(t.closeTime) }, t.side === 'long' ? 'LONG' : 'SHORT'),
+    el('td', {}, (+t.entry.toPrecision(7)).toString()), el('td', {}, (+t.exit.toPrecision(7)).toString()),
+    el('td', { class: t.pnl >= 0 ? 'up' : 'dn' }, signed(t.pnl)), el('td', { class: 'muted' }, t.reason))));
+}
+
+function updateLegend(v, param) {
+  if (param !== null) {
+    if (param && param.time && param.seriesData) { v.crossIdx = bsearch(v, param.time); v.crossBar = param.seriesData.get(v.c.candleSeries) || null; }
+    else { v.crossIdx = null; v.crossBar = null; }
+  }
+  const box = $(v.legId); if (!box) return;
+  const cs = v.candles, n = visCount(v); let bar = v.crossBar, idx = v.crossIdx;
+  if (idx === null || idx < 0 || !bar) { idx = n - 1; bar = v.form || (cs.length ? cs[n - 1] : null); }
+  if (!bar) { box.innerHTML = ''; return; }
+  const up = bar.close >= bar.open, cls = up ? 'up' : 'dn', chg = bar.open ? (bar.close - bar.open) / bar.open * 100 : 0;
+  const tag = S.layout === 'single' ? '' : `<b style="color:var(--cyan)">[${v.n === 1 ? 'A' : 'B'}]</b> `;
+  let html = `<div class="ohlc">${tag}<b>${S.symbol}</b> · ${v.tf} <span>O <i class="${cls}">${fmtP(bar.open)}</i></span><span>H <i class="${cls}">${fmtP(bar.high)}</i></span><span>L <i class="${cls}">${fmtP(bar.low)}</i></span><span>C <i class="${cls}">${fmtP(bar.close)}</i></span><span class="${cls}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span></div><div class="inds">`;
+  
+  const visibleInds = isDockActive() ? v.IND.filter(i => i.spec && i.spec.overlay) : v.IND;
+  for (const ind of visibleInds) {
+    if (!ind.spec || (v.hidden && !ind.spec.overlay)) continue;
+    const vals = ind.spec.plots.filter(pl => pl.type === 'line' || ind.spec.plots.length <= 2).map(pl => {
+      const val = idx >= 0 && idx < n ? pl.values[idx] : NaN;
+      return `<i style="color:${pl.color};font-style:normal">${isF(val) ? (Math.abs(val) >= 100 ? val.toFixed(S.prec > 2 ? 2 : S.prec) : val.toFixed(4)) : '–'}</i>`;
+    });
+    html += `<span class="muted">${indTitle(ind)} ${vals.join(' ')}</span>`;
+  }
+  box.innerHTML = html + '</div>';
+}
+
+// Crosshair synchronization
+VIEWS.forEach(v => v.c.chart.subscribeCrosshairMove(p => {
+  v.pendingParam = p;
+  if (v.legRaf) return;
+  v.legRaf = true;
+  requestAnimationFrame(() => {
+    v.legRaf = false;
+    updateLegend(v, v.pendingParam);
+    if (v === V1 && isDockActive()) {
+      let logical = null;
+      if (p.point) logical = v.c.chart.timeScale().coordinateToLogical(p.point.x);
+      syncDockedCrosshair(p.time, logical);
+    }
+  });
+}));
+
+V1.c.chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+  if (isDockActive()) syncDockedChartsRange();
+});
+
+function updateStatus() {
+  if (dom.stData) {
+    const parts = viewsNeeded().filter(v => v.candles.length).map(v => `${S.layout === 'single' ? '' : (v.n === 1 ? 'A ' : 'B ')}${v.tf}: ${v.candles.length.toLocaleString()} candles · ${fmtDT(v.candles[0].time)} → ${fmtDT(v.candles[v.candles.length - 1].time)}`);
+    dom.stData.textContent = parts.join('   |   ') || 'Ready';
+  }
+  if (dom.stSrc) dom.stSrc.innerHTML = `<span class="badge">${V1.srcUsed || 'ONLINE'}</span>`;
+}
+
+/* =====================================================================
+   DRAWINGS & RULER
+   ===================================================================== */
+let tool = 'cursor', pending = null, dotOwner = 0;
+function setTool(t) {
+  tool = t; pending = null;
+  VIEWS.forEach(v => { if (v.ruler && !v.ruler.final) { v.ruler = null; drawRuler(v); } });
+  $('toolCursor').classList.toggle('on', t === 'cursor');
+  $('toolH').classList.toggle('on', t === 'h');
+  $('toolTrend').classList.toggle('on', t === 'trend');
+  $('toolRuler').classList.toggle('on', t === 'ruler');
+  $('drawDot').style.display = 'none';
+  if (t === 'h') toast('Click on chart to draw horizontal line');
+  if (t === 'trend') toast('Click Point A, then Point B to draw trendline');
+  if (t === 'ruler') toast('Click Point A, move mouse to measure, click Point B to fix');
+}
+
+function followDot(v, p) {
+  const dot = $('drawDot');
+  if (tool === 'cursor' || !p.point) { if (tool === 'cursor' || dotOwner === v.n) dot.style.display = 'none'; return; }
+  dotOwner = v.n; dot.style.display = 'block';
+  const pr = $('chartWrap').getBoundingClientRect(), r = $(v.paneId).getBoundingClientRect();
+  dot.style.left = (r.left - pr.left + p.point.x) + 'px'; dot.style.top = (r.top - pr.top + p.point.y) + 'px';
+}
+
+function removeDrawingObjs(v) {
+  for (const d of v.drawings) { try { if (d.type === 'h') d.series.removePriceLine(d.obj); else v.c.chart.removeSeries(d.obj); } catch { /* ignore */ } d.obj = null; d.series = null; }
+}
+
+function rebuildDrawingSeries(v) {
+  for (const d of v.drawings) {
+    try {
+      if (v.hidden && d.paneIndex > 0) continue;
+      if (d.type === 'h') { const t = getSeriesForPane(v, d.paneIndex); d.series = t; d.obj = t.createPriceLine({ price: d.price, color: '#ffd43b', lineWidth: 1, lineStyle: LW.LineStyle.Solid, axisLabelVisible: true, title: '' }); }
+      else { const sr = v.c.chart.addSeries(LW.LineSeries, { color: '#00f0ff', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, d.paneIndex); sr.setData(d.pts.map(q => ({ time: q.time, value: q.price }))); d.obj = sr; }
+    } catch { /* ignore */ }
+  }
+}
+
+function rulerPoint(v, p) {
+  if (!p.point || (p.paneIndex !== undefined && p.paneIndex !== 0)) return null;
+  const l = v.c.chart.timeScale().coordinateToLogical(p.point.x), price = v.c.candleSeries.coordinateToPrice(p.point.y);
+  if (l == null || price == null) return null;
+  return { logical: Math.round(l), price };
+}
+
+function rulerMove(v, p) {
+  if (tool !== 'ruler' || !v.ruler || v.ruler.final) return;
+  const pt = rulerPoint(v, p); if (!pt) return;
+  v.ruler.b = pt; drawRuler(v);
+}
+
+function rulerClick(p, v, pIdx) {
+  if (pIdx !== 0) { toast('Ruler works on the price pane'); return; }
+  const pt = rulerPoint(v, p); if (!pt) return;
+  if (!v.ruler || v.ruler.final) {
+    VIEWS.forEach(w => { if (w !== v && w.ruler && !w.ruler.final) { w.ruler = null; drawRuler(w); } });
+    v.ruler = { a: pt, b: pt, final: false }; drawRuler(v);
+  } else { v.ruler.b = pt; v.ruler.final = true; drawRuler(v); setTool('cursor'); }
+}
+
+function drawRuler(v) {
+  const svg = $(v.svgId); if (!svg) return;
+  svg.innerHTML = '';
+  const r = v.ruler; if (!r || !viewsNeeded().includes(v)) return;
+  const ts = v.c.chart.timeScale(), ser = v.c.candleSeries;
+  const x1 = ts.logicalToCoordinate(r.a.logical), x2 = ts.logicalToCoordinate(r.b.logical), y1 = ser.priceToCoordinate(r.a.price), y2 = ser.priceToCoordinate(r.b.price);
+  if ([x1, x2, y1, y2].some(q => q == null)) return;
+  const box = svg.getBoundingClientRect(), W = box.width, H = box.height;
+  const dp = r.b.price - r.a.price, pct = r.a.price ? dp / r.a.price * 100 : 0, nb = Math.abs(r.b.logical - r.a.logical);
+  const pts = Math.round(Math.abs(dp) * Math.pow(10, S.prec)), sg = dp >= 0 ? '+' : '';
+  let vol = 0; const lo = Math.max(0, Math.min(r.a.logical, r.b.logical)), hi = Math.max(r.a.logical, r.b.logical);
+  for (let i = lo; i <= hi && i <= v.done; i++) { if (i < v.done) vol += v.candles[i].volume; else if (v.form) vol += v.form.volume; }
+  const col = dp >= 0 ? '#2f7bff' : '#ff3d71', fill = dp >= 0 ? 'rgba(47,123,255,.18)' : 'rgba(255,61,113,.18)';
+  const L = Math.min(x1, x2), Rr = Math.max(x1, x2), T = Math.min(y1, y2), B = Math.max(y1, y2), mx = (L + Rr) / 2, my = (T + B) / 2;
+  const arrow = (xa, ya, xb, yb) => {
+    if (Math.hypot(xb - xa, yb - ya) < 3) return '';
+    const ang = Math.atan2(yb - ya, xb - xa), len = 9, f = n => n.toFixed(1);
+    return `<line x1="${f(xa)}" y1="${f(ya)}" x2="${f(xb)}" y2="${f(yb)}" stroke="${col}" stroke-width="1.5"/><polygon points="${f(xb)},${f(yb)} ${f(xb - len * Math.cos(ang - 0.4))},${f(yb - len * Math.sin(ang - 0.4))} ${f(xb - len * Math.cos(ang + 0.4))},${f(yb - len * Math.sin(ang + 0.4))}" fill="${col}"/>`;
+  };
+  const lines = [`${sg}${fmtP(dp)} (${sg}${pct.toFixed(2)}%) ${pts} pts`, `${nb} bars`, `Vol ${vol.toLocaleString()}`];
+  const w = Math.max(...lines.map(t => t.length)) * 7 + 18, h = lines.length * 16 + 8;
+  const lx = Math.max(4, Math.min(x2 + 12, W - w - 70)), ly = Math.max(4, Math.min(dp >= 0 ? y2 - h - 10 : y2 + 10, H - h - 30));
+  svg.innerHTML = `<rect x="${L}" y="${T}" width="${Rr - L}" height="${B - T}" fill="${fill}" stroke="${col}" stroke-width="1" stroke-dasharray="4 3"/>`
+    + `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="1" stroke-dasharray="2 3"/>`
+    + arrow(x1, my, x2, my) + arrow(mx, y1, mx, y2)
+    + `<circle cx="${x1}" cy="${y1}" r="4" fill="${col}"/><circle cx="${x2}" cy="${y2}" r="4" fill="${col}"/>`
+    + `<rect x="${lx}" y="${ly}" width="${w}" height="${h}" rx="5" fill="rgba(16,20,42,.94)" stroke="${col}"/>`
+    + lines.map((t, i) => `<text x="${lx + 9}" y="${ly + 18 + i * 16}" fill="${i ? '#b8c2ee' : '#fff'}" font-size="11.5" font-weight="${i ? 400 : 700}" font-family="Consolas,Menlo,monospace">${t}</text>`).join('');
+}
+function redrawRulers() { VIEWS.forEach(v => { if (v.ruler) drawRuler(v); }); }
+VIEWS.forEach(v => {
+  v.c.chart.subscribeCrosshairMove(p => { followDot(v, p); rulerMove(v, p); });
+  v.c.chart.timeScale().subscribeVisibleLogicalRangeChange(() => { if (v.ruler) drawRuler(v); });
+  let raf = false;
+  $(v.paneId).addEventListener('pointermove', () => { if (!v.ruler || raf) return; raf = true; requestAnimationFrame(() => { raf = false; drawRuler(v); }); });
+  $(v.paneId).addEventListener('wheel', () => { if (v.ruler) requestAnimationFrame(() => drawRuler(v)); }, { passive: true });
+  v.c.chart.subscribeClick(p => handleDrawingClick(p, v));
+});
+window.addEventListener('resize', () => {
+  setTimeout(() => {
+    redrawRulers();
+    if (isDockActive()) syncDockedChartsRange();
+  }, 80);
+});
+
+function handleDrawingClick(p, v) {
+  if (tool === 'cursor' || !p.point) return;
+  const pIdx = p.paneIndex ?? 0;
+  if (tool === 'ruler') { rulerClick(p, v, pIdx); return; }
+  const targetSeries = getSeriesForPane(v, pIdx);
+  const price = targetSeries ? targetSeries.coordinateToPrice(p.point.y) : null;
+  if (price == null) return;
+  if (tool === 'h') {
+    const pl = targetSeries.createPriceLine({ price, color: '#ffd43b', lineWidth: 1, lineStyle: LW.LineStyle.Solid, axisLabelVisible: true, title: '' });
+    v.drawings.push({ type: 'h', paneIndex: pIdx, series: targetSeries, obj: pl, price });
+    setTool('cursor'); toast('Horizontal line placed'); return;
+  }
+  if (tool === 'trend' && p.time) {
+    if (!pending || pending.v !== v) { pending = { v, time: p.time, price, paneIndex: pIdx }; toast('Point A set. Click Point B.'); return; }
+    if (pending.paneIndex !== pIdx) { pending = { v, time: p.time, price, paneIndex: pIdx }; return; }
+    if (pending.time === p.time) return;
+    const pts = [{ time: pending.time, price: pending.price }, { time: p.time, price }].sort((a, b) => a.time - b.time);
+    const sr = v.c.chart.addSeries(LW.LineSeries, { color: '#00f0ff', lineWidth: 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, pIdx);
+    sr.setData(pts.map(q => ({ time: q.time, value: q.price })));
+    v.drawings.push({ type: 't', paneIndex: pIdx, obj: sr, pts });
+    setTool('cursor'); toast('Trendline placed');
+  }
+}
+function clearDrawings() {
+  VIEWS.forEach(v => { removeDrawingObjs(v); v.drawings.length = 0; v.ruler = null; drawRuler(v); });
+  pending = null;
+  toast('All drawings removed');
+}
+
+/* =====================================================================
+   TOOLBAR BUTTONS & TIMEFRAME SELECTORS
    ===================================================================== */
 Object.keys(TF).forEach(tf => $('tfSeg').append(el('button', { 'data-tf': tf, class: tf === S.tf ? 'on' : '', onclick: () => changeTf(tf) }, tf)));
 const markTf = () => document.querySelectorAll('#tfSeg button').forEach(b => b.classList.toggle('on', b.dataset.tf === AV().tf));
@@ -1762,10 +2308,9 @@ $('speedIcon').onclick = () => {
   else { setReplaySpeed('real'); toast(`Speed: 1:1 Real Live (${master().tf})`); }
 };
 
-// Fixed zoom button callbacks (Wrapped in arrow functions)
 $('btnFit').onclick = () => { C1.chart.timeScale().fitContent(); C2.chart.timeScale().fitContent(); };
-$('btnZoomIn').onclick = () => zoomChart(0.7);
-$('btnZoomOut').onclick = () => zoomChart(1.4);
+$('btnZoomIn').onclick = zoomChart(0.7);
+$('btnZoomOut').onclick = zoomChart(1.4);
 $('btnZoomReset').onclick = () => { C1.chart.timeScale().fitContent(); C2.chart.timeScale().fitContent(); };
 
 let sidePanelOpen = true;
@@ -1813,7 +2358,7 @@ document.addEventListener('keydown', e => {
 setInterval(() => { $('clockTxt').textContent = new Date().toLocaleString('en-GB', { hour12: false }); }, 1000);
 
 /* =====================================================================
-   BOOTSTRAP
+   STARTUP INITIALIZATION
    ===================================================================== */
 (function init() {
   initDomCache();
