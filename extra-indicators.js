@@ -91,7 +91,7 @@
     }
   };
 
-  // 3. DeMarker (MT5 Oscillator)
+  // 3. DeMarker (MT5 Standard Oscillator) — FIXED
   window.TFX_EXTRA_INDICATORS.demarker = {
     name: 'DeMarker (MT5)',
     params: [
@@ -101,14 +101,15 @@
     run: (c, p) => {
       const n = c.high.length, dMax = nanArr(n), dMin = nanArr(n), out = nanArr(n);
       for (let i = 1; i < n; i++) {
-        dMax[i] = c.high[i] > c.high[i - 1] ? c.high[i] - c.high[i - 1] : 0;
-        dMin[i] = c.low[i] < c.low[i - 1] ? c.low[i - 1] - c.low[i] : 0;
+        dMax[i] = c.high[i] > c.high[i - 1] ? (c.high[i] - c.high[i - 1]) : 0;
+        dMin[i] = c.low[i] < c.low[i - 1] ? (c.low[i - 1] - c.low[i]) : 0;
       }
-      const sMax = math.sma(dMax, p.len), sMin = math.sma(dMin, p.len);
+      const sMax = math.sma(dMax, p.len);
+      const sMin = math.sma(dMin, p.len);
       for (let i = 0; i < n; i++) {
         if (isF(sMax[i]) && isF(sMin[i])) {
           const den = sMax[i] + sMin[i];
-          out[i] = den === 0 ? 0.5 : sMax[i] / den;
+          out[i] = den === 0 ? 0.5 : (sMax[i] / den);
         }
       }
       return {
