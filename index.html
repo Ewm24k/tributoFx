@@ -6,6 +6,8 @@
 <title>Tributo Fx — Chart &amp; Practice Trading</title>
 <!-- TradingView Lightweight Charts (Apache-2.0) -->
 <script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
+<!-- TradingView Embedded Widget API -->
+<script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
 
 <style>
 :root{
@@ -324,6 +326,11 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       </div>
 
       <div id="chartWrap">
+        <!-- Live TradingView Overlay Layer -->
+        <div id="tvEmbedWrap" style="display:none;position:absolute;inset:0;z-index:28;background:var(--bg);width:100%;height:100%;">
+          <div id="tvChartContainer" style="width:100%;height:100%;"></div>
+        </div>
+
         <div id="paneChart1" class="chart-pane-wrap active-pane">
           <div id="chart" class="chart-view"></div>
           <div id="legend"></div><svg class="ruler-svg" id="rulerSvg1"></svg>
@@ -521,9 +528,57 @@ let toastTimer = null;
 let askPriceLine1 = null;
 let askPriceLine2 = null;
 let posLines = [];
+let tvWidget = null;
 
 const isF = Number.isFinite;
 const nanArr = n => new Array(n).fill(NaN);
+
+/* =====================================================================
+   LIVE TRADINGVIEW WIDGET INTEGRATION
+   ===================================================================== */
+function renderLiveTradingView(sym = S.symbol, tf = V1.tf) {
+  let tvSymbol = 'OANDA:XAUUSD';
+  const upper = String(sym || 'XAUUSD').toUpperCase();
+
+  if (upper === 'XAUUSD' || upper === 'GOLD') tvSymbol = 'OANDA:XAUUSD';
+  else if (upper.includes('BTC')) tvSymbol = 'BINANCE:BTCUSDT';
+  else if (upper.includes('ETH')) tvSymbol = 'BINANCE:ETHUSDT';
+  else if (upper.includes('SOL')) tvSymbol = 'BINANCE:SOLUSDT';
+  else if (upper.includes('BNB')) tvSymbol = 'BINANCE:BNBUSDT';
+  else if (upper.includes('XRP')) tvSymbol = 'BINANCE:XRPUSDT';
+  else if (upper.includes('EURUSD')) tvSymbol = 'OANDA:EURUSD';
+  else if (upper.includes('GBPUSD')) tvSymbol = 'OANDA:GBPUSD';
+  else if (upper.includes('USDJPY')) tvSymbol = 'OANDA:USDJPY';
+  else if (upper.includes('GBPJPY')) tvSymbol = 'OANDA:GBPJPY';
+  else if (upper.includes('AUDUSD')) tvSymbol = 'OANDA:AUDUSD';
+  else if (upper === 'NAS100' || upper === 'US100' || upper === 'USTEC' || upper === 'NQ') tvSymbol = 'CAPITALCOM:US100';
+  else if (upper === 'USOIL' || upper === 'UKOIL') tvSymbol = 'TVC:USOIL';
+  else tvSymbol = `OANDA:${upper}`;
+
+  const tfMap = { '1m': '1', '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1d': 'D' };
+  const interval = tfMap[tf] || '15';
+
+  const container = $('tvChartContainer');
+  if (container) container.innerHTML = '';
+
+  if (window.TradingView) {
+    tvWidget = new TradingView.widget({
+      "autosize": true,
+      "symbol": tvSymbol,
+      "interval": interval,
+      "timezone": "Etc/UTC",
+      "theme": "dark",
+      "style": "1",
+      "locale": "en",
+      "toolbar_bg": "#0b0e1a",
+      "enable_publishing": false,
+      "hide_side_toolbar": false,
+      "allow_symbol_change": true,
+      "container_id": "tvChartContainer"
+    });
+  }
+}
+window.renderLiveTradingView = renderLiveTradingView;
 
 /* =====================================================================
    TOP-LEVEL DATA CONVERTERS
@@ -933,7 +988,7 @@ const ta = {
       const hl2 = (h[i] + l[i]) / 2, ub = hl2 + mult * atr[i], lb = hl2 - mult * atr[i];
       if (!started) { fub = ub; flb = lb; dir = 1; started = true; }
       else {
-        const pf = average => fub, pl = flb;
+        const pf = fub, pl = flb;
         fub = (ub < pf || c[i - 1] > pf) ? ub : pf;
         flb = (lb > pl || c[i - 1] < pl) ? lb : pl;
         if (dir === -1 && c[i] > fub) dir = 1; else if (dir === 1 && c[i] < flb) dir = -1;
@@ -2154,6 +2209,7 @@ function selectInstrument(sym) {
   $('symInput').value = sym;
   saveSettings();
   reload(null, false);
+  if (!S.replayOn) renderLiveTradingView(S.symbol, V1.tf);
 }
 
 function openBloombergModal() {
@@ -2261,7 +2317,7 @@ function renderScriptList() {
 
 /* =====================================================================
    MAIN INTERFACE CONTROLS & TIMEFRAME SELECTORS
-   ===================================================================== */
+   ==================================================================== */
 function markTf() {
   document.querySelectorAll('#tfSeg button').forEach(b => b.classList.toggle('on', b.dataset.tf === AV().tf));
 }
@@ -2343,6 +2399,7 @@ async function changeTf(tf) {
   removeDrawingObjs(v); v.drawings = v.drawings.filter(d => d.type === 'h'); v.ruler = null; drawRuler(v);
   v.tf = tf; markTf(); saveSettings();
   await reload(cur, false, [v]);
+  if (!S.replayOn) renderLiveTradingView(S.symbol, V1.tf);
 }
 
 function toggleSidePanel() {
@@ -2437,10 +2494,22 @@ function init() {
 
   $('replayChk').onchange = () => {
     S.replayOn = $('replayChk').checked; pause();
+    const isReplay = S.replayOn;
+    const tvLayer = $('tvEmbedWrap');
+
     ['btnStart', 'btnPlay', 'btnTick', 'btnCandle', 'speedSel', 'btnSpeedDown', 'btnSpeedUp', 'repDate'].forEach(id => {
-      const elx = $(id); if (elx) elx.disabled = !S.replayOn;
+      const elx = $(id); if (elx) elx.disabled = !isReplay;
     });
-    if (S.replayOn) startReplay(); else showAll();
+
+    if (isReplay) {
+      if (tvLayer) tvLayer.style.display = 'none';
+      startReplay();
+      toast('Mode: Practice Replay');
+    } else {
+      if (tvLayer) tvLayer.style.display = 'block';
+      renderLiveTradingView(S.symbol, V1.tf);
+      toast(`Mode: Real-Time Live (${S.symbol})`);
+    }
   };
 
   // Keyboard shortcuts
@@ -2573,6 +2642,12 @@ function init() {
   renderHistory();
   updateAll();
   reload(null, false);
+
+  if (!S.replayOn) {
+    const tvLayer = $('tvEmbedWrap');
+    if (tvLayer) tvLayer.style.display = 'block';
+    renderLiveTradingView(S.symbol, V1.tf);
+  }
 }
 
 // Execute bootstrap
