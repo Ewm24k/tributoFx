@@ -5,13 +5,11 @@
 (function() {
   'use strict';
 
-  // Global indicator registry bridge
   window.TFX_EXTRA_INDICATORS = window.TFX_EXTRA_INDICATORS || {};
 
   const isF = Number.isFinite;
   const nanArr = n => new Array(n).fill(NaN);
 
-  // Standalone math engine (can run with or without main ta object)
   const math = {
     sma(src, len) {
       const n = src.length, out = nanArr(n); let sum = 0, bad = 0;
@@ -55,9 +53,9 @@
 
   const line = (title, values, color, w = 2) => ({ title, values, color, type: 'line', lineWidth: w });
 
-  // 1. Bears Power (MT5 Standard Histogram)
+  // 1. Bears Power (MT5 Histogram)
   window.TFX_EXTRA_INDICATORS.bearspower = {
-    name: 'Bears Power (MT5 Histogram)',
+    name: 'Bears Power (MT5)',
     params: [
       { k: 'len', l: 'Period', t: 'num', d: 13, min: 1 },
       { k: 'color', l: 'Color', t: 'color', d: '#ff3d71' }
@@ -74,9 +72,9 @@
     }
   };
 
-  // 2. Bulls Power (MT5 Standard Histogram)
+  // 2. Bulls Power (MT5 Histogram)
   window.TFX_EXTRA_INDICATORS.bullspower = {
-    name: 'Bulls Power (MT5 Histogram)',
+    name: 'Bulls Power (MT5)',
     params: [
       { k: 'len', l: 'Period', t: 'num', d: 13, min: 1 },
       { k: 'color', l: 'Color', t: 'color', d: '#00e5a0' }
@@ -93,7 +91,7 @@
     }
   };
 
-  // 3. DeMarker Indicator (MT5 Standard Oscillator)
+  // 3. DeMarker (MT5 Oscillator)
   window.TFX_EXTRA_INDICATORS.demarker = {
     name: 'DeMarker (MT5)',
     params: [
@@ -104,7 +102,7 @@
       const n = c.high.length, dMax = nanArr(n), dMin = nanArr(n), out = nanArr(n);
       for (let i = 1; i < n; i++) {
         dMax[i] = c.high[i] > c.high[i - 1] ? c.high[i] - c.high[i - 1] : 0;
-        dMin[i] = c.low[i] < c.low[i - 1] ? c.low[i - 1] - c.low[i - 1] : 0;
+        dMin[i] = c.low[i] < c.low[i - 1] ? c.low[i - 1] - c.low[i] : 0;
       }
       const sMax = math.sma(dMax, p.len), sMin = math.sma(dMin, p.len);
       for (let i = 0; i < n; i++) {
@@ -126,9 +124,9 @@
     }
   };
 
-  // 4. Awesome Oscillator (Bill Williams MT5 Histogram)
+  // 4. Awesome Oscillator (AO MT5 Histogram)
   window.TFX_EXTRA_INDICATORS.ao = {
-    name: 'Awesome Oscillator (AO MT5)',
+    name: 'Awesome Oscillator (AO)',
     params: [
       { k: 'f', l: 'Fast SMA', t: 'num', d: 5, min: 1 },
       { k: 's', l: 'Slow SMA', t: 'num', d: 34, min: 2 }
@@ -146,9 +144,9 @@
     }
   };
 
-  // 5. Alligator Histogram / Gator Oscillator (Bill Williams MT5)
+  // 5. Gator Oscillator (Alligator Histogram)
   window.TFX_EXTRA_INDICATORS.alligator_hist = {
-    name: 'Gator Oscillator (Alligator Histogram)',
+    name: 'Gator Oscillator (Histogram)',
     params: [],
     run: (c) => {
       const med = math.hl2(c.high, c.low);
@@ -176,7 +174,7 @@
 
   // 6. Classic Alligator Lines Overlay
   window.TFX_EXTRA_INDICATORS.alligator = {
-    name: 'Alligator (Jaw/Teeth/Lips Lines)',
+    name: 'Alligator (Lines)',
     params: [],
     run: (c) => {
       const med = math.hl2(c.high, c.low);
@@ -190,6 +188,4 @@
       };
     }
   };
-
-  console.log('[TributoFx] Extra Indicators loaded: Bears Power, Bulls Power, DeMarker, AO, Gator Oscillator, Alligator Lines');
 })();
