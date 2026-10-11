@@ -6,6 +6,10 @@
 <title>Tributo Fx — Chart &amp; Practice Trading</title>
 <!-- Free library: TradingView Lightweight Charts (Apache-2.0). Needs internet for the CDN + free market data APIs. -->
 <script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
+
+<!-- External MT5 Indicators Plugin -->
+<script src="extra-indicators.js"></script>
+
 <style>
 :root{
   --bg:#0b0e1a; --panel:#10142a; --panel2:#151a35; --line:#1d2342; --text:#d7ddf5; --muted:#7f89b3;
@@ -191,7 +195,6 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
   <div class="bar">
     <div class="logo"><i class="mark"></i><div><b>Tributo</b><span> Fx</span></div></div>
     
-    <!-- Bloomberg Instrument Selector Trigger -->
     <div class="sym-box">
       <input id="symInput" value="XAUUSD" size="10" readonly title="Click to open Bloomberg Terminal Instrument Selector">
     </div>
@@ -210,7 +213,6 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <option value="demo">Data: Demo (offline)</option>
     </select>
     
-    <!-- Layout Selector (Split Screen 16:9 / 9:16) -->
     <select id="layoutSel" title="Split Screen Chart Layout" style="color:var(--cyan);font-weight:600">
       <option value="single">⊞ 1 Chart</option>
       <option value="horz">⊞ 16:9 (Top/Bottom)</option>
@@ -280,7 +282,6 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <button id="btnFit" title="Fit chart">⤢</button>
     </div>
 
-    <!-- Chart Wrapper Supporting Split-Screen Mode -->
     <div id="chartWrap">
       <div id="paneChart1" class="chart-pane-wrap active-pane">
         <div id="chart" class="chart-view"></div>
@@ -385,7 +386,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
   </div>
 </div>
 
-<!-- ===== Bloomberg Terminal Style Instrument Popup Modal ===== -->
+<!-- ===== Instrument Directory Modal ===== -->
 <div class="bb-modal" id="bbModal" hidden>
   <div class="bb-box">
     <div class="bb-head">
@@ -393,7 +394,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <button class="x" id="bbClose" style="border:0;color:#ff9900;font-size:14px">ESC ✕</button>
     </div>
     <div class="bb-searchbar">
-      <input type="text" id="bbSearch" class="bb-input" placeholder="Type Ticker / Asset Name (e.g. NAS100, XAUUSD, USOIL, GBPJPY, BTC)..." autofocus>
+      <input type="text" id="bbSearch" class="bb-input" placeholder="Type Ticker / Asset Name (e.g. XAUUSD, BTC, NAS100)..." autofocus>
     </div>
     <div class="bb-tabs" id="bbTabs">
       <button class="bb-tab on" data-cat="all">[F1: ALL]</button>
@@ -411,19 +412,19 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
   </div>
 </div>
 
-<!-- ===== Indicators modal ===== -->
+<!-- ===== Indicators Modal ===== -->
 <div class="modal" id="modalInd" hidden>
   <div class="mbox">
     <div class="mhead"><span id="indTitle">Indicators</span><button class="btn" data-close>✕</button></div>
     <div class="mbody">
-      <div><h5>Add built-in indicator</h5><div class="chips" id="indAvail"></div>
-        <p class="muted" style="margin-top:14px">Replay mode reveals indicator values only for completed candles. Double-click the chart at any time to hide or show bottom indicator panes.</p></div>
+      <div><h5>Add Indicator (Built-in &amp; MT5 Suite)</h5><div class="chips" id="indAvail"></div>
+        <p class="muted" style="margin-top:14px">Replay reveals indicator values only for completed candles with zero look-ahead bias.</p></div>
       <div><h5>On chart</h5><button class="btn" id="btnCopyInd2" style="margin-bottom:8px">⇉ Apply all A → B</button><div id="indActive"></div></div>
     </div>
   </div>
 </div>
 
-<!-- ===== Script modal ===== -->
+<!-- ===== Script Modal ===== -->
 <div class="modal" id="modalScript" hidden>
   <div class="mbox">
     <div class="mhead"><span id="scTitle">Script indicators (JavaScript)</span><button class="btn" data-close>✕</button></div>
@@ -446,8 +447,8 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         <h5>Saved scripts</h5>
         <div id="scList" style="margin-bottom:12px"></div>
         <h5>How to write a script</h5>
-<pre class="doc">// Available arrays (1 value per candle):
-//   time open high low close volume hl2 hlc3 ohlc4   n = count
+<pre class="doc">// Available arrays (1 per candle):
+// time open high low close volume hl2 hlc3 ohlc4 n
 // Helpers: ta.sma ta.ema ta.rma ta.atr ta.rsi ta.macd ta.bb ta.stoch ta.supertrend
 // indicator({ name:'My script', overlay:true })
 // plot(array, { title, color, lineWidth, style:'line'|'histogram' })
@@ -463,10 +464,10 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 (() => {
 'use strict';
 const LW = window.LightweightCharts;
-if (!LW) { document.body.innerHTML = '<p style="padding:30px;color:#fff">Could not load chart engine. Please check your internet connection.</p>'; return; }
+if (!LW) return;
 
 /* =====================================================================
-   BROKER SPREAD BENCHMARK SPECIFICATIONS
+   BROKER SPREADS & INSTRUMENT DIRECTORY
    ===================================================================== */
 const BROKER_SPREADS = {
   FBS: { EURUSD: 0.00010, GBPUSD: 0.00013, XAUUSD: 0.31, USOIL: 0.04, UKOIL: 0.05, NAS100: 1.50, US100: 1.50, USTEC: 1.50, BTCUSD: 30.0, BTCUSDT: 30.0, defaultPips: 1.2 },
@@ -476,9 +477,6 @@ const BROKER_SPREADS = {
   FXTM: { EURUSD: 0.00015, GBPUSD: 0.00019, XAUUSD: 0.32, USOIL: 0.04, UKOIL: 0.05, NAS100: 2.00, US100: 2.00, USTEC: 2.00, BTCUSD: 28.0, BTCUSDT: 28.0, defaultPips: 1.5 }
 };
 
-/* =====================================================================
-   INSTRUMENT DIRECTORY
-   ===================================================================== */
 const INSTRUMENTS = [
   { sym: 'XAUUSD', name: 'Gold Spot / US Dollar', cat: 'metals', tag: 'MT5 GOLD' },
   { sym: 'BTCUSDT', name: 'Bitcoin / Tether Spot', cat: 'crypto', tag: 'CRYPTO' },
@@ -609,12 +607,6 @@ const ta = {
     for (let i = 0; i < n; i++) if (isF(mid[i]) && isF(sd[i])) { up[i] = mid[i] + mult * sd[i]; lo[i] = mid[i] - mult * sd[i]; }
     return { mid, upper: up, lower: lo };
   },
-  stoch(h, l, c, kLen = 14, kSmooth = 3, dLen = 3) {
-    const hh = ta.highest(h, kLen), ll = ta.lowest(l, kLen), n = c.length, raw = nanArr(n);
-    for (let i = 0; i < n; i++) if (isF(hh[i]) && isF(ll[i])) raw[i] = hh[i] === ll[i] ? 50 : 100 * (c[i] - ll[i]) / (hh[i] - ll[i]);
-    const k = ta.sma(raw, kSmooth), d = ta.sma(k, dLen);
-    return { k, d };
-  },
   supertrend(h, l, c, len = 10, mult = 3) {
     const n = c.length, atr = ta.atr(h, l, c, len), up = nanArr(n), down = nanArr(n);
     let fub = NaN, flb = NaN, dir = 1, started = false;
@@ -699,6 +691,11 @@ const BUILTIN = {
     run: (c, p) => { const s = ta.supertrend(c.high, c.low, c.close, p.len, p.mult); return { overlay: true, plots: [line('ST up', s.up, '#00e5a0', 2), line('ST down', s.down, '#ff3d71', 2)] }; } }
 };
 
+// Auto-merge extra external indicators from extra-indicators.js
+if (window.TFX_EXTRA_INDICATORS) {
+  Object.assign(BUILTIN, window.TFX_EXTRA_INDICATORS);
+}
+
 const TEMPLATES = {
   'EMA Cross': `indicator({ name: 'EMA Cross', overlay: true });
 const fast = ta.ema(close, 9);
@@ -711,7 +708,7 @@ signal(ta.crossunder(fast, slow), { position: 'aboveBar', shape: 'arrowDown', co
 //#PURE_END
 
 /* =====================================================================
-   CONSTANTS & STATE
+   TIME CONSTANTS & FORMATTERS
    ===================================================================== */
 const TF = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
 const BYBIT_INT = { '1m': '1', '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1d': 'D' };
@@ -768,7 +765,7 @@ function initDomCache() {
 }
 
 /* =====================================================================
-   INDEXEDDB PERSISTENT STORAGE
+   INDEXEDDB PERSISTENCE
    ===================================================================== */
 const IDB = {
   db: null,
@@ -776,7 +773,7 @@ const IDB = {
     if (this.db) return this.db;
     return new Promise(resolve => {
       try {
-        const req = indexedDB.open('TributoFxDB_v2', 1);
+        const req = indexedDB.open('TributoFxDB_v3', 1);
         req.onupgradeneeded = e => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains('candles')) db.createObjectStore('candles');
@@ -809,7 +806,7 @@ const IDB = {
 };
 
 /* =====================================================================
-   SPREAD LOGIC
+   SPREAD DYNAMICS
    ===================================================================== */
 function getCurrentSpreadValue(price) {
   if (!S.spreadOn) return 0;
@@ -829,7 +826,7 @@ function updateBidAsk(lastPrice) {
 }
 
 /* =====================================================================
-   CHART SETUP
+   DUAL CHART CONSTRUCTORS
    ===================================================================== */
 const tickFmt = (t, type) => {
   const d = new Date(t * 1000);
@@ -896,7 +893,7 @@ function zoomChart(factor) {
 $('chartWrap').addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 
 /* =====================================================================
-   HIGH-SPEED MARKET DATA ENGINE
+   DATA FETCHING ENGINE (BINANCE EDGE + BYBIT + INSTITUTIONAL)
    ===================================================================== */
 function toApiSymbol(sym) {
   if (sym === 'XAUUSD' || sym === 'GOLD') return 'PAXGUSDT';
@@ -916,19 +913,16 @@ async function fetchJson(url, timeoutMs = 8000) {
     const text = await r.text();
     try {
       const parsed = JSON.parse(text);
-      if (parsed && typeof parsed.contents === 'string') {
-        return JSON.parse(parsed.contents);
-      }
+      if (parsed && typeof parsed.contents === 'string') return JSON.parse(parsed.contents);
       return parsed;
     } catch {
-      throw new Error('Invalid JSON response');
+      throw new Error('Invalid JSON');
     }
   } finally {
     clearTimeout(tid);
   }
 }
 
-// Resilient Binance multi-endpoint fetcher
 async function binanceWindow(sym, tf, s, e) {
   const target = toApiSymbol(sym);
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -1033,13 +1027,12 @@ async function institutionalWindow(sym, tf, rangeStart, rangeEnd) {
           candles.forEach(c => map.set(c.time, c));
           return { candles: [...map.values()], source: 'INSTITUTIONAL' };
         }
-      } catch { /* try next */ }
+      } catch { /* next */ }
     }
   }
   throw new Error('Institutional feed offline');
 }
 
-// Resilient pool runner: never aborts the whole batch if an individual chunk fails
 async function pool(tasks, limit, onProgress) {
   const res = new Array(tasks.length); let idx = 0, done = 0;
   await Promise.all(Array.from({ length: limit }, async () => {
@@ -1102,7 +1095,7 @@ async function loadData(tf, forceRefresh = false) {
     const stored = await IDB.get(key);
     if (stored && stored.candles && stored.candles.length >= 20) {
       if (S.source !== 'demo' && (stored.source === 'demo' || !stored.source)) {
-        // Evict stale demo cache from previous sessions
+        // Evict legacy demo
       } else {
         dataCache.set(key, stored);
         return stored;
@@ -1112,7 +1105,7 @@ async function loadData(tf, forceRefresh = false) {
 
   const tfMs = TF[tf] * 1000, now = Date.now();
   const currentYear = new Date().getUTCFullYear();
-  const yr = Date.UTC(currentYear, 0, 1, 0, 0, 0); // January 1, 2026 default
+  const yr = Date.UTC(currentYear, 0, 1, 0, 0, 0);
   
   let startMs;
   if (S.range === 'year') {
@@ -1123,7 +1116,6 @@ async function loadData(tf, forceRefresh = false) {
     startMs = now - 30 * 864e5;
   }
 
-  // Provider hierarchy: Binance is fast, accurate, CORS-enabled, and supports M1/M5/M15 directly
   let providers;
   if (S.source === 'auto') {
     const isSpecialIndex = /^(NAS100|US100|USTEC|NQ|USOIL|UKOIL|GBPJPY|USDJPY)$/i.test(S.symbol);
@@ -1143,7 +1135,6 @@ async function loadData(tf, forceRefresh = false) {
         return res;
       }
 
-      // Binance / Bybit batch loader
       const wins = [];
       for (let s = Math.floor(startMs / tfMs) * tfMs; s < now; s += 1000 * tfMs) {
         wins.push([s, Math.min(s + 1000 * tfMs - 1, now)]);
@@ -1166,9 +1157,7 @@ async function loadData(tf, forceRefresh = false) {
         await IDB.set(key, res);
         return res;
       }
-    } catch {
-      // Continue to next provider in cascade
-    }
+    } catch { /* next */ }
   }
 
   if (S.source !== 'demo') toast(`Using realistic offline simulator for ${S.symbol}`);
@@ -1178,7 +1167,7 @@ async function loadData(tf, forceRefresh = false) {
   return res;
 }
 
-/* ===== INDICATORS ===== */
+/* ===== INDICATORS REBUILD ===== */
 const colsOf = cs => {
   const n = cs.length, o = { time: new Array(n), open: new Array(n), high: new Array(n), low: new Array(n), close: new Array(n), volume: new Array(n) };
   for (let i = 0; i < n; i++) { const c = cs[i]; o.time[i] = c.time; o.open[i] = c.open; o.high[i] = c.high; o.low[i] = c.low; o.close[i] = c.close; o.volume[i] = c.volume; }
@@ -1340,7 +1329,7 @@ function advanceSlave(v) {
   if (v.form) { v.c.candleSeries.update(candleBar(v.form)); v.c.volSeries.update(volBar(v.form, v.form.volume)); }
 }
 
-/* ===== REPLAY ENGINE ===== */
+/* ===== REPLAY LOOP ===== */
 const pickN = () => {
   if (S.speed === 'real') { const sec = master().tfSec || 60; return sec <= 60 ? sec : Math.min(120, Math.max(20, Math.round(sec / 5))); }
   const sp = +S.speed || 2;
@@ -1355,7 +1344,7 @@ const pickN = () => {
 
 function tickFrame() {
   const m = master(), cs = m.candles;
-  if (R.i >= cs.length) { pause(); toast('End of loaded data'); return false; }
+  if (R.i >= cs.length) { pause(); toast('End of data'); return false; }
   if (R.k === 0) R.N = pickN();
   const c = cs[R.i], prev = Pz.last;
   R.k++;
@@ -1422,12 +1411,12 @@ function startReplay() {
 function positionAt(cursorEnd) {
   const m = master(), cs = m.candles; let n = 0;
   while (n < cs.length && cs[n].time + m.tfSec <= cursorEnd) n++;
-  if (n < 50) { n = Math.min(cs.length - 1, Math.max(50, Math.min(150, Math.floor(cs.length * 0.25)))); }
+  if (n < 50) n = Math.min(cs.length - 1, Math.max(50, Math.min(150, Math.floor(cs.length * 0.25))));
   placeReplay(Math.max(50, Math.min(cs.length - 1, n)));
 }
 function showAll() { pause(); renderAll(); VIEWS.forEach(v => v.c.chart.timeScale().fitContent()); }
 
-/* ===== TRADING LOGIC ===== */
+/* ===== TRADING OPERATIONS ===== */
 const feePct = () => Math.max(0, parseFloat($('ordFee').value) || 0);
 const levX = () => Math.max(1, parseFloat($('ordLev').value) || 1);
 const dirOf = p => p.side === 'long' ? 1 : -1;
@@ -1554,7 +1543,7 @@ function layoutPos() {
     for (const [id, e] of v.posEls) if (!live.has(id)) { e.root.remove(); v.posEls.delete(id); }
   }
 }
-(function posLoop() { if (A.positions.length || VIEWS.some(v => v.posEls && v.posEls.size)) { try { layoutPos(); } catch { /* ignore */ } } requestAnimationFrame(posLoop); })();
+(function posLoop() { if (A.positions.length || VIEWS.some(v => v.posEls && v.posEls.size)) { try { layoutPos(); } catch (err) { /* ignore */ } } requestAnimationFrame(posLoop); })();
 
 function syncPriceLines() {
   try { layoutPos(); } catch (err) { console.error(err); }
@@ -1640,7 +1629,7 @@ function renderHistory() {
     kv('Avg win', wins.length ? signed(gw / wins.length) : '-', 'up'), kv('Avg loss', losses.length ? signed(-gl / losses.length) : '-', 'dn'));
   const body = $('histBody'); body.innerHTML = '';
   if (!h.length) body.append(el('tr', {}, el('td', { colspan: '5', class: 'muted' }, 'No closed trades yet')));
-  h.slice(0, 100).forEach(t => body.append(el('tr', {}, el('td', { class: t.side === 'long' ? 'up' : 'dn' }, t.side === 'long' ? 'LONG' : 'SHORT'),
+  h.slice(0, 100).forEach(t => body.append(el('tr', {}, el('td', { class: t.side === 'long' ? 'up' : 'dn', title: t.symbol + '  ' + fmtDT(t.openTime) + ' → ' + fmtDT(t.closeTime) }, t.side === 'long' ? 'LONG' : 'SHORT'),
     el('td', {}, (+t.entry.toPrecision(7)).toString()), el('td', {}, (+t.exit.toPrecision(7)).toString()),
     el('td', { class: t.pnl >= 0 ? 'up' : 'dn' }, signed(t.pnl)), el('td', { class: 'muted' }, t.reason))));
 }
@@ -1683,7 +1672,7 @@ function updateStatus() {
   if (dom.stSrc) dom.stSrc.innerHTML = viewsNeeded().some(v => v.srcUsed === 'demo') ? '<span class="badge demo">DEMO DATA</span>' : `<span class="badge">${V1.srcUsed || 'BINANCE'}</span>`;
 }
 
-/* ===== DRAWING TOOLS & SVG RULER ===== */
+/* ===== DRAWING TOOLS & RULER ===== */
 let tool = 'cursor', pending = null, dotOwner = 0;
 function setTool(t) {
   tool = t; pending = null;
@@ -1807,7 +1796,7 @@ function clearDrawings() {
   toast('All drawings removed');
 }
 
-/* ===== INSTRUMENT SELECTION MODAL ===== */
+/* ===== INSTRUMENT PICKER WIRING ===== */
 let bbSelectedIdx = 0;
 let currentCat = 'all';
 
@@ -1916,7 +1905,7 @@ $('bbSearch').addEventListener('keydown', e => {
   }
 });
 
-/* ===== MULTI-CHART LAYOUT SWITCHER ===== */
+/* ===== LAYOUT & SPLIT VIEW ===== */
 function setActive(n) {
   activeChartIndex = n;
   $('paneChart1').classList.toggle('active-pane', n === 1);
@@ -1946,7 +1935,7 @@ $('layoutSel').addEventListener('change', () => setLayoutMode($('layoutSel').val
 $('paneChart1').addEventListener('pointerdown', () => setActive(1), true);
 $('paneChart2').addEventListener('pointerdown', () => setActive(2), true);
 
-/* ===== MODALS: INDICATORS & SCRIPTS ===== */
+/* ===== INDICATORS MODAL WIRING ===== */
 function openModal(id) { $(id).hidden = false; }
 document.querySelectorAll('.modal').forEach(m => {
   m.addEventListener('click', e => { if (e.target === m || e.target.hasAttribute('data-close')) m.hidden = true; });
@@ -2008,7 +1997,7 @@ function renderScriptList() {
 }
 $('btnScript').onclick = () => { renderScriptList(); $('scTitle').textContent = 'Script indicators (JavaScript) — Chart ' + (AV().n === 1 ? 'A' : 'B'); openModal('modalScript'); };
 const tplSel = $('tplSel');
-tplSel.append(el('option', { value: '' }, 'Load a template…'));
+tplSel.append(el('option', { value: '' }, 'Load template…'));
 Object.keys(TEMPLATES).forEach(k => tplSel.append(el('option', { value: k }, k)));
 tplSel.onchange = () => { if (tplSel.value) loadScriptToEditor(tplSel.value, TEMPLATES[tplSel.value]); tplSel.value = ''; };
 $('scNew').onclick = () => loadScriptToEditor('', '');
@@ -2032,15 +2021,13 @@ loadScriptToEditor('', TEMPLATES['EMA Cross']);
 $('scName').value = 'EMA Cross';
 
 /* =====================================================================
-   WIRING & CONTROL BINDINGS
+   MAIN INTERFACE CONTROLS & TIMEFRAME SWITCHING
    ===================================================================== */
 Object.keys(TF).forEach(tf => $('tfSeg').append(el('button', { 'data-tf': tf, class: tf === S.tf ? 'on' : '', onclick: () => changeTf(tf) }, tf)));
 const markTf = () => document.querySelectorAll('#tfSeg button').forEach(b => b.classList.toggle('on', b.dataset.tf === AV().tf));
 $('symInput').value = S.symbol; $('rangeSel').value = S.range; $('srcSel').value = S.source; $('speedSel').value = String(S.speed);
 
-// Default replay date setup for full year 2026
-const defaultYearStart = () => '2026-01-01';
-$('repDate').value = defaultYearStart();
+$('repDate').value = '2026-01-01';
 $('chkSpread').checked = !!S.spreadOn;
 $('selBroker').value = S.broker || 'XM';
 
@@ -2088,7 +2075,7 @@ function showLoading(on, msg) {
 }
 
 async function reload(cursorEnd, forceRefresh = false, which = null) {
-  showLoading(true, `Loading full ${S.symbol} data starting from Jan 1, 2026...`);
+  showLoading(true, `Loading full ${S.symbol} data from Jan 1, 2026...`);
   try {
     const list = which || viewsNeeded();
     await Promise.all(list.map(async v => {
@@ -2099,7 +2086,6 @@ async function reload(cursorEnd, forceRefresh = false, which = null) {
     for (const v of list) { v.IND.forEach(ind => computeInd(v, ind)); rebuildIndicatorSeries(v); }
     updateStatus();
 
-    // Align datepicker to loaded range
     const cs = master().candles;
     if (cs && cs.length) {
       const firstDt = new Date(cs[0].time * 1000).toISOString().slice(0, 10);
@@ -2127,7 +2113,6 @@ function currentCursor() {
   return R.i > 0 ? m.candles[R.i - 1].time + m.tfSec : null;
 }
 
-// Timeframe selector changes ONLY the selected active chart
 async function changeTf(tf) {
   const v = AV(); if (tf === v.tf) return;
   const cur = currentCursor();
