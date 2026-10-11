@@ -38,7 +38,7 @@ input[type=checkbox]{accent-color:var(--violet)}
 .muted{color:var(--muted)}
 .up{color:var(--up)} .dn{color:var(--dn)}
 
-/* Bulletproof 3-Column Main Grid */
+/* Bulletproof 3-Column Layout: Left Tools (46px), Center Workspace (1fr), Right Panel (350px) */
 .main{display:grid;grid-template-columns:46px minmax(0, 1fr) 350px;min-height:0;height:100%;transition:grid-template-columns .15s ease}
 .main.side-collapsed{grid-template-columns:46px minmax(0, 1fr) 0px}
 .main.side-collapsed .side{display:none}
@@ -48,7 +48,7 @@ input[type=checkbox]{accent-color:var(--violet)}
 .tools button:hover{background:var(--panel2)}
 .tools button.on{border-color:var(--cyan);box-shadow:0 0 10px rgba(0,240,255,.35)}
 
-/* Center Stage: Flex container keeping Indicator Dock and ChartWrap in perfect proportions */
+/* Center Stage: Flex row containing the Left Indicator Dock and Main ChartWrap */
 .center-stage{display:flex;min-width:0;min-height:0;width:100%;height:100%;position:relative;overflow:hidden}
 
 /* Left Indicator Dock Panel */
@@ -66,7 +66,7 @@ input[type=checkbox]{accent-color:var(--violet)}
 .ind-dock-list::-webkit-scrollbar{width:4px}
 .ind-dock-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
 
-/* Individual Indicator Cards */
+/* Individual Indicator Cards in Left Dock */
 .ind-card{
   background:var(--panel2);border:1px solid var(--line);border-radius:8px;
   display:flex;flex-direction:column;overflow:hidden;position:relative;box-shadow:0 4px 12px rgba(0,0,0,0.25);
@@ -241,8 +241,6 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     <select id="srcSel" title="Free data source">
       <option value="auto">Data: Auto (High-Speed)</option>
       <option value="binance">Data: Binance Direct</option>
-      <option value="bybit">Data: Bybit Spot</option>
-      <option value="institutional">Data: Institutional Feed</option>
       <option value="demo">Data: Demo (offline)</option>
     </select>
     
@@ -316,7 +314,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <button id="btnFit" title="Fit chart">⤢</button>
     </div>
 
-    <!-- Center Stage: Houses Left Indicator Dock and Main Chart in Solid Proportions -->
+    <!-- Center Stage: Flex Container Keeping Indicator Dock and ChartWrap in Solid Proportions -->
     <div class="center-stage">
       <!-- Left Indicator Dock Panel -->
       <div id="indDock" class="ind-dock" style="display:none">
@@ -508,7 +506,7 @@ const LW = window.LightweightCharts;
 if (!LW) return;
 
 /* =====================================================================
-   BROKER SPREADS & INSTRUMENT DIRECTORY
+   BROKER SPREADS & INSTRUMENTS
    ===================================================================== */
 const BROKER_SPREADS = {
   FBS: { EURUSD: 0.00010, GBPUSD: 0.00013, XAUUSD: 0.31, USOIL: 0.04, UKOIL: 0.05, NAS100: 1.50, US100: 1.50, USTEC: 1.50, BTCUSD: 30.0, BTCUSDT: 30.0, defaultPips: 1.2 },
@@ -542,11 +540,10 @@ const INSTRUMENTS = [
 ];
 
 /* =====================================================================
-   PURE LOGIC: MATH & MT5 TECHNICAL INDICATORS
+   MATH & INDICATOR SUITE (BUILT-IN + MT5)
    ===================================================================== */
 const isF = Number.isFinite;
 const nanArr = n => new Array(n).fill(NaN);
-const atv = (x, i) => Array.isArray(x) ? x[i] : x;
 
 const ta = {
   sma(src, len) {
@@ -559,7 +556,7 @@ const ta = {
     return out;
   },
   ema(src, len, alpha) {
-    const n = src.length, out = nanArr(n), a = alpha || 2 / (len + 1);
+    const n = src.length, out = nanArr(n), a = alpha || (2 / (len + 1));
     let cnt = 0, sum = 0, prev = NaN;
     for (let i = 0; i < n; i++) {
       const v = src[i];
@@ -649,6 +646,22 @@ const ta = {
       if (dir === 1) up[i] = flb; else down[i] = fub;
     }
     return { up, down };
+  },
+  crossover(a, b) {
+    const n = Array.isArray(a) ? a.length : b.length, out = new Array(n).fill(false);
+    for (let i = 1; i < n; i++) {
+      const a0 = a[i - 1], a1 = a[i], b0 = b[i - 1], b1 = b[i];
+      out[i] = isF(a0) && isF(a1) && isF(b0) && isF(b1) && a1 > b1 && a0 <= b0;
+    }
+    return out;
+  },
+  crossunder(a, b) {
+    const n = Array.isArray(a) ? a.length : b.length, out = new Array(n).fill(false);
+    for (let i = 1; i < n; i++) {
+      const a0 = a[i - 1], a1 = a[i], b0 = b[i - 1], b1 = b[i];
+      out[i] = isF(a0) && isF(a1) && isF(b0) && isF(b1) && a1 < b1 && a0 >= b0;
+    }
+    return out;
   }
 };
 
@@ -687,7 +700,6 @@ function runScript(code, cols) {
 
 const line = (title, values, color, w = 2) => ({ title, values, color, type: 'line', lineWidth: w });
 
-// BUILT-IN INDICATOR REGISTRY (Includes MT5 Indicators Suite)
 const BUILTIN = {
   sma: { name: 'SMA', params: [{ k:'len', l:'Length', t:'num', d:50, min:1 }, { k:'color', l:'Color', t:'color', d:'#ffd43b' }], run: (c, p) => ({ overlay: true, plots: [line('SMA ' + p.len, ta.sma(c.close, p.len), p.color)] }) },
   ema: { name: 'EMA', params: [{ k:'len', l:'Length', t:'num', d:21, min:1 }, { k:'color', l:'Color', t:'color', d:'#00f0ff' }], run: (c, p) => ({ overlay: true, plots: [line('EMA ' + p.len, ta.ema(c.close, p.len), p.color)] }) },
@@ -727,7 +739,7 @@ const BUILTIN = {
     }
   },
 
-  // MT5: DeMarker Oscillator (Fixed High/Low formula)
+  // MT5: DeMarker Oscillator
   demarker: {
     name: 'DeMarker (MT5)',
     params: [{ k:'len', l:'Period', t:'num', d:14, min:1 }, { k:'color', l:'Color', t:'color', d:'#00f0ff' }],
@@ -807,10 +819,13 @@ const BUILTIN = {
   }
 };
 
-// Also support any external plugins if loaded
-if (window.TFX_EXTRA_INDICATORS) {
-  Object.assign(BUILTIN, window.TFX_EXTRA_INDICATORS);
-}
+const TEMPLATES = {
+  'EMA Cross': `indicator({ name: 'EMA Cross', overlay: true });
+const fast = ta.ema(close, 9);
+const slow = ta.ema(close, 21);
+plot(fast, { title: 'Fast EMA', color: '#00f0ff' });
+plot(slow, { title: 'Slow EMA', color: '#ff2bd6' });`
+};
 
 /* =====================================================================
    TIME CONSTANTS & FORMATTERS
@@ -870,7 +885,7 @@ const IDB = {
     if (this.db) return this.db;
     return new Promise(resolve => {
       try {
-        const req = indexedDB.open('TributoFxDB_v5', 1);
+        const req = indexedDB.open('TributoFxDB_v6', 1);
         req.onupgradeneeded = e => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains('candles')) db.createObjectStore('candles');
@@ -1013,7 +1028,6 @@ async function fetchJson(url, timeoutMs = 6000) {
   }
 }
 
-// Ultra-fast Binance data gateway (Direct CORS, no proxy needed)
 async function binanceWindow(sym, tf, s, e) {
   const target = toApiSymbol(sym);
   const url = `https://data-api.binance.vision/api/v3/klines?symbol=${target}&interval=${tf}&startTime=${s}&endTime=${e}&limit=1000`;
@@ -1084,12 +1098,9 @@ async function loadData(tf, forceRefresh = false) {
 
   const tfMs = TF[tf] * 1000, now = Date.now();
   const currentYear = new Date().getUTCFullYear();
-  const yr = Date.UTC(currentYear, 0, 1, 0, 0, 0); // 2026-01-01
+  const yr = Date.UTC(currentYear, 0, 1, 0, 0, 0); // Jan 1, 2026
   
-  // Fast window calculation:
-  // For 1m: loads past 15,000 candles (~10 days) in 15 calls (<0.5s)
-  // For 5m: loads past 25,000 candles (~87 days) in 25 calls (<1s)
-  // For 15m/1h/4h/1d: loads full year 2026 in 10-27 calls (<1s)
+  // Fast window calculation: load up to 15,000–25,000 candles to guarantee sub-second load times
   const maxC = tf === '1m' ? 15000 : (tf === '5m' ? 25000 : 40000);
   const rangeStart = S.range === 'year' ? yr : now - (S.range === '90d' ? 90 : 30) * 864e5;
   const startMs = Math.max(rangeStart, now - maxC * tfMs);
@@ -1116,7 +1127,7 @@ async function loadData(tf, forceRefresh = false) {
         await IDB.set(key, res);
         return res;
       }
-    } catch { /* fallback to demo generator */ }
+    } catch { /* fallback to demo */ }
   }
 
   const res = { candles: demoCandles(S.symbol, TF[tf], startMs / 1000, now / 1000), source: 'demo' };
@@ -1126,7 +1137,7 @@ async function loadData(tf, forceRefresh = false) {
 }
 
 /* =====================================================================
-   LEFT SIDE DOCK SECTION (CLEAN CHART ENGINE & ALIGNED CROSSHAIR)
+   LEFT SIDE DOCK SECTION (CLEAN CHART & CROSSHAIR SYNC)
    ===================================================================== */
 let dockedIndicators = [];
 
@@ -1609,34 +1620,47 @@ const togglePlay = () => R.playing ? pause() : play();
 
 function placeReplay(idx) {
   const m = master(), cs = m.candles;
+  if (!cs || !cs.length) return;
+  idx = Math.max(1, Math.min(cs.length - 1, idx));
   R.i = idx; R.k = 0;
-  updateBidAsk(cs[idx - 1].close); Pz.time = cs[idx - 1].time;
+  const refCandle = cs[idx - 1] || cs[0];
+  updateBidAsk(refCandle.close);
+  Pz.time = refCandle.time;
   renderAll();
-  for (const v of viewsNeeded()) v.c.chart.timeScale().setVisibleLogicalRange({ from: v.done - 110, to: v.done + 40 });
+  for (const v of viewsNeeded()) {
+    if (v.done > 0) {
+      v.c.chart.timeScale().setVisibleLogicalRange({ from: v.done - 110, to: v.done + 40 });
+    }
+  }
 }
 
 function startReplay() {
   pause();
   if (A.positions.length) closeAll('Replay restart');
-  const cs = master().candles; if (!cs.length) return;
+  const cs = master().candles;
+  if (!cs || !cs.length) return;
   const targetDateStr = $('repDate').value || '2026-01-01';
   const ts = new Date(targetDateStr + 'T00:00:00Z').getTime() / 1000;
   let idx = cs.findIndex(c => c.time >= ts);
-  if (idx < 50) idx = Math.min(cs.length - 1, Math.max(50, Math.min(150, Math.floor(cs.length * 0.25))));
-  placeReplay(Math.max(50, Math.min(cs.length - 1, idx)));
+  if (idx < 0) idx = Math.floor(cs.length * 0.5);
+  const minIdx = Math.min(50, Math.max(1, Math.floor(cs.length * 0.1)));
+  idx = Math.max(minIdx, Math.min(cs.length - 1, idx));
+  placeReplay(idx);
 }
 
 function positionAt(cursorEnd) {
-  const m = master(), cs = m.candles; let n = 0;
+  const m = master(), cs = m.candles;
+  if (!cs || !cs.length) return;
+  let n = 0;
   while (n < cs.length && cs[n].time + m.tfSec <= cursorEnd) n++;
-  if (n < 50) n = Math.min(cs.length - 1, Math.max(50, Math.min(150, Math.floor(cs.length * 0.25))));
-  placeReplay(Math.max(50, Math.min(cs.length - 1, n)));
+  n = Math.max(1, Math.min(cs.length - 1, n));
+  placeReplay(n);
 }
 function showAll() { pause(); renderAll(); VIEWS.forEach(v => v.c.chart.timeScale().fitContent()); }
 
 /* =====================================================================
    TRADING ENGINE & P/L
-   ===================================================================== */
+   ==================================================================== */
 const feePct = () => Math.max(0, parseFloat($('ordFee').value) || 0);
 const levX = () => Math.max(1, parseFloat($('ordLev').value) || 1);
 const dirOf = p => p.side === 'long' ? 1 : -1;
@@ -1851,7 +1875,7 @@ function renderHistory() {
     kv('Avg win', wins.length ? signed(gw / wins.length) : '-', 'up'), kv('Avg loss', losses.length ? signed(-gl / losses.length) : '-', 'dn'));
   const body = $('histBody'); body.innerHTML = '';
   if (!h.length) body.append(el('tr', {}, el('td', { colspan: '5', class: 'muted' }, 'No closed trades yet')));
-  h.slice(0, 100).forEach(t => body.append(el('tr', {}, el('td', { class: t.side === 'long' ? 'up' : 'dn' }, t.side === 'long' ? 'LONG' : 'SHORT'),
+  h.slice(0, 100).forEach(t => body.append(el('tr', {}, el('td', { class: t.side === 'long' ? 'up' : 'dn', title: t.symbol + '  ' + fmtDT(t.openTime) + ' → ' + fmtDT(t.closeTime) }, t.side === 'long' ? 'LONG' : 'SHORT'),
     el('td', {}, (+t.entry.toPrecision(7)).toString()), el('td', {}, (+t.exit.toPrecision(7)).toString()),
     el('td', { class: t.pnl >= 0 ? 'up' : 'dn' }, signed(t.pnl)), el('td', { class: 'muted' }, t.reason))));
 }
@@ -1882,7 +1906,7 @@ function updateLegend(v, param) {
   box.innerHTML = html + '</div>';
 }
 
-// Subscribe Crosshair Move on Main Charts & Propagate to Left Indicator Dock
+// Crosshair move listener with left dock synchronization
 VIEWS.forEach(v => v.c.chart.subscribeCrosshairMove(p => {
   v.pendingParam = p;
   if (v.legRaf) return;
@@ -1891,7 +1915,11 @@ VIEWS.forEach(v => v.c.chart.subscribeCrosshairMove(p => {
     v.legRaf = false;
     updateLegend(v, v.pendingParam);
     if (v === V1 && isDockActive()) {
-      syncDockedCrosshair(v.pendingParam?.time, v.pendingParam?.logical);
+      let logical = null;
+      if (p.point) {
+        logical = v.c.chart.timeScale().coordinateToLogical(p.point.x);
+      }
+      syncDockedCrosshair(p.time, logical);
     }
   });
 }));
@@ -1909,7 +1937,7 @@ function updateStatus() {
 }
 
 /* =====================================================================
-   DRAWING TOOLS & RULER
+   DRAWING TOOLS & MEASUREMENT RULER
    ===================================================================== */
 let tool = 'cursor', pending = null, dotOwner = 0;
 function setTool(t) {
@@ -2038,234 +2066,7 @@ function clearDrawings() {
 }
 
 /* =====================================================================
-   BLOOMBERG TERMINAL INSTRUMENT SELECTOR
-   ===================================================================== */
-let bbSelectedIdx = 0;
-let currentCat = 'all';
-
-function renderBloombergList() {
-  const query = $('bbSearch').value.trim().toUpperCase();
-  const listEl = $('bbList');
-  listEl.innerHTML = '';
-
-  const filtered = INSTRUMENTS.filter(it => {
-    const matchCat = currentCat === 'all' || it.cat === currentCat;
-    const matchQuery = !query || it.sym.includes(query) || it.name.toUpperCase().includes(query);
-    return matchCat && matchQuery;
-  });
-
-  $('bbCount').textContent = `${filtered.length} Instruments`;
-
-  if (!filtered.length) {
-    listEl.append(el('div', { style: 'padding:20px;color:#ff9900;text-align:center' }, 'NO INSTRUMENT FOUND'));
-    return;
-  }
-
-  if (bbSelectedIdx >= filtered.length) bbSelectedIdx = 0;
-
-  filtered.forEach((it, idx) => {
-    const item = el('div', {
-      class: `bb-item ${idx === bbSelectedIdx ? 'active' : ''}`,
-      onclick: () => selectInstrument(it.sym)
-    },
-      el('div', { class: 'bb-sym' }, it.sym),
-      el('div', { class: 'bb-name' }, it.name),
-      el('div', { class: 'bb-cat' }, it.cat),
-      el('div', { class: 'bb-tag' }, it.tag)
-    );
-    listEl.append(item);
-  });
-}
-
-function selectInstrument(sym) {
-  closeBloombergModal();
-  if (sym === S.symbol) return;
-  if (A.positions.length) { toast('Close open positions before changing symbol'); return; }
-  clearDrawings();
-  S.symbol = sym;
-  $('symInput').value = sym;
-  saveSettings();
-  reload(null, false);
-}
-
-function openBloombergModal() {
-  $('bbModal').hidden = false;
-  $('bbSearch').value = '';
-  bbSelectedIdx = 0;
-  renderBloombergList();
-  setTimeout(() => $('bbSearch').focus(), 50);
-}
-
-function closeBloombergModal() { $('bbModal').hidden = true; }
-
-$('symInput').addEventListener('click', openBloombergModal);
-$('bbClose').addEventListener('click', closeBloombergModal);
-$('bbModal').addEventListener('click', e => { if (e.target === $('bbModal')) closeBloombergModal(); });
-
-document.querySelectorAll('#bbTabs .bb-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('#bbTabs .bb-tab').forEach(t => t.classList.remove('on'));
-    tab.classList.add('on');
-    currentCat = tab.dataset.cat;
-    bbSelectedIdx = 0;
-    renderBloombergList();
-  });
-});
-
-$('bbSearch').addEventListener('input', () => {
-  bbSelectedIdx = 0;
-  renderBloombergList();
-});
-
-$('bbSearch').addEventListener('keydown', e => {
-  const items = document.querySelectorAll('.bb-item');
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    if (items.length) {
-      bbSelectedIdx = (bbSelectedIdx + 1) % items.length;
-      renderBloombergList();
-      const activeEl = document.querySelector('.bb-item.active');
-      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
-    }
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    if (items.length) {
-      bbSelectedIdx = (bbSelectedIdx - 1 + items.length) % items.length;
-      renderBloombergList();
-      const activeEl = document.querySelector('.bb-item.active');
-      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
-    }
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
-    const activeEl = document.querySelector('.bb-item.active');
-    if (activeEl) {
-      selectInstrument(activeEl.querySelector('.bb-sym').textContent);
-    } else if ($('bbSearch').value.trim()) {
-      selectInstrument($('bbSearch').value.trim().toUpperCase());
-    }
-  } else if (e.key === 'Escape') {
-    closeBloombergModal();
-  }
-});
-
-/* =====================================================================
-   SPLIT-SCREEN & DOCK CONTROLS
-   ===================================================================== */
-function setActive(n) {
-  activeChartIndex = n;
-  $('paneChart1').classList.toggle('active-pane', n === 1);
-  $('paneChart2').classList.toggle('active-pane', n === 2);
-  markTf();
-  if (scriptEditIdx !== null) { scriptEditIdx = null; $('scAdd').textContent = 'Add to chart'; }
-  if (!$('modalInd').hidden) renderIndModal();
-}
-
-function setLayoutMode(mode, noLoad) {
-  const prev = S.layout, cur = noLoad ? null : currentCursor();
-  if (!noLoad && prev === 'single' && mode !== 'single') { V2.tf = V1.tf; V2.tfSec = V1.tfSec; }
-  S.layout = mode;
-  saveSettings();
-  $('layoutSel').value = mode;
-  const wrap = $('chartWrap');
-  wrap.classList.remove('split-horz', 'split-vert');
-  if (mode === 'single') { $('paneChart2').style.display = 'none'; setActive(1); }
-  else { $('paneChart2').style.display = 'block'; wrap.classList.add(mode === 'horz' ? 'split-horz' : 'split-vert'); markTf(); }
-  if (!noLoad) {
-    if (mode !== 'single' && V2.key !== keyOf(V2)) reload(cur, false, [V2]);
-    else if (!S.replayOn) showAll();
-    else if (cur != null) positionAt(cur);
-  }
-  setTimeout(() => { sizePanes(); redrawRulers(); }, 60);
-}
-$('layoutSel').addEventListener('change', () => setLayoutMode($('layoutSel').value));
-$('paneChart1').addEventListener('pointerdown', () => setActive(1), true);
-$('paneChart2').addEventListener('pointerdown', () => setActive(2), true);
-
-/* =====================================================================
-   INDICATORS & SCRIPT MODAL
-   ===================================================================== */
-function openModal(id) { $(id).hidden = false; }
-document.querySelectorAll('.modal').forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m || e.target.hasAttribute('data-close')) m.hidden = true; });
-});
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { document.querySelectorAll('.modal').forEach(m => m.hidden = true); if (tool !== 'cursor') setTool('cursor'); } });
-
-function applyIndChange(v = AV()) { rebuildIndicatorSeries(v); renderAll(); saveInds(); }
-function addBuiltin(type) {
-  const v = AV(), params = {}; BUILTIN[type].params.forEach(p => params[p.k] = p.d);
-  const ind = { type, params, series: [] }; computeInd(v, ind); v.IND.push(ind); applyIndChange(v); renderIndModal();
-}
-function copyIndAtoB() {
-  if (S.layout === 'single') { toast('Open split-screen layout first'); return; }
-  V2.IND.forEach(ind => ind.series?.forEach(sr => { try { V2.c.chart.removeSeries(sr); } catch { /* ignore */ } }));
-  V2.IND = V1.IND.map(i => ({ type: i.type, params: JSON.parse(JSON.stringify(i.params || {})), code: i.code, name: i.name, series: [] }));
-  V2.IND.forEach(i => computeInd(V2, i));
-  applyIndChange(V2); if (!$('modalInd').hidden) renderIndModal();
-  toast('Indicators copied: Chart A → Chart B');
-}
-let scriptEditView = null;
-function renderIndModal() {
-  const v = AV();
-  $('indTitle').textContent = `Indicators — Chart ${v.n === 1 ? 'A' : 'B'} (${v.tf})`;
-  const av = $('indAvail'); av.innerHTML = '';
-  for (const [type, d] of Object.entries(BUILTIN)) av.append(el('button', { class: 'chip', onclick: () => addBuiltin(type) }, '+ ' + d.name));
-  const ac = $('indActive'); ac.innerHTML = '';
-  if (!v.IND.length) ac.append(el('div', { class: 'muted' }, 'No indicators yet.'));
-  v.IND.forEach((ind, idx) => {
-    const ps = el('div', { class: 'ps' });
-    if (ind.type !== 'script') BUILTIN[ind.type].params.forEach(p => {
-      const inp = el('input', { type: p.t === 'color' ? 'color' : 'number', value: ind.params[p.k] });
-      if (p.t === 'num') { inp.min = p.min ?? 1; inp.step = p.step ?? 1; }
-      inp.addEventListener('change', () => { ind.params[p.k] = p.t === 'color' ? inp.value : (parseFloat(inp.value) || p.d); computeInd(v, ind); applyIndChange(v); renderIndModal(); });
-      ps.append(el('label', {}, p.l, inp));
-    });
-    const head = el('div', { class: 't' }, el('span', {}, (ind.type === 'script' ? '{ } ' : '') + indTitle(ind)),
-      el('span', {},
-        ind.type === 'script' ? el('button', { class: 'btn', style: 'margin-right:6px', onclick: () => { loadScriptToEditor(ind.name || indTitle(ind), ind.code, idx); scriptEditView = v; openModal('modalScript'); } }, 'Edit') : '',
-        el('button', { class: 'x', onclick: () => { v.IND.splice(idx, 1); applyIndChange(v); renderIndModal(); } }, 'Remove')));
-    ac.append(el('div', { class: 'arow' }, head, ps, ind.error ? el('div', { class: 'err' }, ind.error) : ''));
-  });
-}
-$('btnInd').onclick = () => { renderIndModal(); openModal('modalInd'); };
-$('btnCopyInd').onclick = copyIndAtoB;
-$('btnCopyInd2').onclick = copyIndAtoB;
-
-let scriptEditIdx = null;
-const savedScripts = () => store.get('tfx_scripts', []);
-function loadScriptToEditor(name, code, editIdx = null) {
-  $('scName').value = name || ''; $('scCode').value = code || ''; $('scErr').textContent = ''; scriptEditIdx = editIdx;
-  $('scAdd').textContent = editIdx === null ? 'Add to chart' : 'Update on chart';
-}
-function renderScriptList() {
-  const l = $('scList'); l.innerHTML = ''; const arr = savedScripts();
-  if (!arr.length) l.append(el('div', { class: 'muted' }, 'Nothing saved yet.'));
-  arr.forEach((s, i) => l.append(el('div', { class: 'arow' }, el('div', { class: 't' }, el('span', {}, s.name),
-    el('span', {}, el('button', { class: 'btn', style: 'margin-right:6px', onclick: () => loadScriptToEditor(s.name, s.code) }, 'Load'),
-      el('button', { class: 'x', onclick: () => { const a = savedScripts(); a.splice(i, 1); store.set('tfx_scripts', a); renderScriptList(); } }, 'Delete'))))));
-}
-$('btnScript').onclick = () => { renderScriptList(); $('scTitle').textContent = 'Script indicators (JavaScript) — Chart ' + (AV().n === 1 ? 'A' : 'B'); openModal('modalScript'); };
-const tplSel = $('tplSel');
-tplSel.append(el('option', { value: '' }, 'Load template…'));
-$('scNew').onclick = () => loadScriptToEditor('', '');
-$('scSave').onclick = () => {
-  const name = $('scName').value.trim() || 'My script', code = $('scCode').value, arr = savedScripts(), i = arr.findIndex(s => s.name === name);
-  if (i >= 0) arr[i] = { name, code }; else arr.push({ name, code });
-  store.set('tfx_scripts', arr); renderScriptList(); toast('Saved');
-};
-$('scAdd').onclick = () => {
-  const name = $('scName').value.trim() || 'My script', code = $('scCode').value;
-  const v = (scriptEditIdx !== null && scriptEditView) ? scriptEditView : AV();
-  const test = { type: 'script', code, name, series: [] }; computeInd(v, test);
-  if (test.error) { $('scErr').textContent = 'Error: ' + test.error; return; }
-  $('scErr').textContent = '';
-  if (scriptEditIdx !== null && v.IND[scriptEditIdx]) Object.assign(v.IND[scriptEditIdx], { code, name, spec: test.spec, error: null });
-  else v.IND.push(test);
-  scriptEditIdx = null; scriptEditView = null; $('scAdd').textContent = 'Add to chart';
-  applyIndChange(v); toast('Script applied to Chart ' + (v.n === 1 ? 'A' : 'B'));
-};
-
-/* =====================================================================
-   MAIN INTERFACE & CONTROLS
+   TOOLBAR BUTTONS & TIMEFRAME SELECTORS
    ===================================================================== */
 Object.keys(TF).forEach(tf => $('tfSeg').append(el('button', { 'data-tf': tf, class: tf === S.tf ? 'on' : '', onclick: () => changeTf(tf) }, tf)));
 const markTf = () => document.querySelectorAll('#tfSeg button').forEach(b => b.classList.toggle('on', b.dataset.tf === AV().tf));
