@@ -7,6 +7,9 @@
 <!-- TradingView Lightweight Charts (Apache-2.0) -->
 <script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
 
+<!-- External MT5 Indicators Plugin -->
+<script src="extra-indicators.js"></script>
+
 <style>
 :root{
   --bg:#0b0e1a; --panel:#10142a; --panel2:#151a35; --line:#1d2342; --text:#d7ddf5; --muted:#7f89b3;
@@ -38,7 +41,7 @@ input[type=checkbox]{accent-color:var(--violet)}
 .muted{color:var(--muted)}
 .up{color:var(--up)} .dn{color:var(--dn)}
 
-/* Strict 3-Column Grid: Tools (46px) | Center Stage (1fr) | Account Panel (350px) */
+/* Strict 3-Column Grid */
 .main{display:grid;grid-template-columns:46px minmax(0, 1fr) 350px;min-height:0;height:100%;transition:grid-template-columns .15s ease}
 .main.side-collapsed{grid-template-columns:46px minmax(0, 1fr) 0px}
 .main.side-collapsed .side{display:none}
@@ -312,7 +315,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <button id="btnFit" title="Fit chart">⤢</button>
     </div>
 
-    <!-- Center Stage: Houses Left Indicator Dock and Main Chart in Fixed Proportion -->
+    <!-- Center Stage -->
     <div class="center-stage">
       <div id="indDock" class="ind-dock" style="display:none">
         <div class="ind-dock-head">
@@ -507,7 +510,7 @@ if (!LW) return;
 const isF = Number.isFinite;
 const nanArr = n => new Array(n).fill(NaN);
 
-// Converts array of candle objects into columnar arrays for indicators
+// Converts candle array to columnar format for indicators
 const colsOf = cs => {
   const n = cs ? cs.length : 0;
   const o = {
@@ -565,7 +568,7 @@ const INSTRUMENTS = [
 ];
 
 /* =====================================================================
-   MATH & INDICATORS ENGINE
+   MATH & INDICATOR SUITE (BUILT-IN + MT5)
    ===================================================================== */
 const ta = {
   sma(src, len) {
@@ -647,6 +650,13 @@ const ta = {
     for (let i = 0; i < n; i++) if (isF(m[i]) && isF(sg[i])) h[i] = m[i] - sg[i];
     return { macd: m, signal: sg, hist: h };
   },
+  osma(src, f = 12, s = 6, sig = 9) {
+    const ef = ta.ema(src, f), es = ta.ema(src, s), n = src.length, m = nanArr(n);
+    for (let i = 0; i < n; i++) if (isF(ef[i]) && isF(es[i])) m[i] = ef[i] - es[i];
+    const sg = ta.sma(m, sig), out = nanArr(n);
+    for (let i = 0; i < n; i++) if (isF(m[i]) && isF(sg[i])) out[i] = m[i] - sg[i];
+    return out;
+  },
   bb(src, len = 20, mult = 2) {
     const mid = ta.sma(src, len), sd = ta.stdev(src, len), n = src.length, up = nanArr(n), lo = nanArr(n);
     for (let i = 0; i < n; i++) if (isF(mid[i]) && isF(sd[i])) { up[i] = mid[i] + mult * sd[i]; lo[i] = mid[i] - mult * sd[i]; }
@@ -706,7 +716,7 @@ function runScript(code, cols) {
 
 const line = (title, values, color, w = 2) => ({ title, values, color, type: 'line', lineWidth: w });
 
-// Complete MT5 Indicators Registry
+// Complete Indicator Registry
 const BUILTIN = {
   sma: { name: 'SMA', params: [{ k:'len', l:'Length', t:'num', d:50, min:1 }, { k:'color', l:'Color', t:'color', d:'#ffd43b' }], run: (c, p) => ({ overlay: true, plots: [line('SMA ' + p.len, ta.sma(c.close, p.len), p.color)] }) },
   ema: { name: 'EMA', params: [{ k:'len', l:'Length', t:'num', d:21, min:1 }, { k:'color', l:'Color', t:'color', d:'#00f0ff' }], run: (c, p) => ({ overlay: true, plots: [line('EMA ' + p.len, ta.ema(c.close, p.len), p.color)] }) },
@@ -719,6 +729,23 @@ const BUILTIN = {
       const colors = m.hist.map((h, i) => !isF(h) ? null : h >= 0 ? (h >= (m.hist[i - 1] || 0) ? '#26d9a8' : '#8fe8cf') : (h <= (m.hist[i - 1] || 0) ? '#ff3d71' : '#ff94ad'));
       return { overlay: false, plots: [{ title: 'Hist', values: m.hist, color: '#26d9a8', type: 'histogram', colors }, line('MACD', m.macd, '#00f0ff', 1.5), line('Signal', m.signal, '#ff2bd6', 1.5)] };
     } },
+  osma: {
+    name: 'OsMA (12, 6, 9)',
+    params: [
+      { k:'f', l:'Fast EMA', t:'num', d:12, min:1 },
+      { k:'s', l:'Slow EMA', t:'num', d:6, min:1 },
+      { k:'sig', l:'Signal SMA', t:'num', d:9, min:1 }
+    ],
+    run: (c, p) => {
+      const vals = ta.osma(c.close, p.f, p.s, p.sig);
+      const colors = vals.map((v, i) => !isF(v) ? null : v >= (vals[i - 1] || 0) ? '#00e5a0' : '#ff3d71');
+      return {
+        overlay: false,
+        plots: [{ title: 'OsMA', values: vals, color: '#00e5a0', type: 'histogram', colors }],
+        hlines: [{ price: 0, color: '#4a5380', title: '0.0' }]
+      };
+    }
+  },
   supertrend: { name: 'Supertrend', params: [{ k:'len', l:'Length', t:'num', d:10, min:1 }, { k:'mult', l:'Mult', t:'num', d:3, min:0.1, step:0.1 }],
     run: (c, p) => { const s = ta.supertrend(c.high, c.low, c.close, p.len, p.mult); return { overlay: true, plots: [line('ST up', s.up, '#00e5a0', 2), line('ST down', s.down, '#ff3d71', 2)] }; } },
   bearspower: {
@@ -814,6 +841,11 @@ const BUILTIN = {
   }
 };
 
+// Merge any extra indicators from external plugin file if present
+if (window.TFX_EXTRA_INDICATORS) {
+  Object.assign(BUILTIN, window.TFX_EXTRA_INDICATORS);
+}
+
 const TEMPLATES = {
   'EMA Cross': `indicator({ name: 'EMA Cross', overlay: true });
 const fast = ta.ema(close, 9);
@@ -823,7 +855,7 @@ plot(slow, { title: 'Slow EMA', color: '#ff2bd6' });`
 };
 
 /* =====================================================================
-   TIME CONSTANTS & FORMATTERS
+   TIME CONSTANTS & UTILITIES
    ===================================================================== */
 const TF = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
 const BYBIT_INT = { '1m': '1', '5m': '5', '15m': '15', '1h': '60', '4h': '240', '1d': 'D' };
@@ -872,7 +904,7 @@ function initDomCache() {
 }
 
 /* =====================================================================
-   INDEXEDDB PERSISTENCE (ROBUST & AUTO-REPAIRING)
+   INDEXEDDB PERSISTENCE (AUTO-REPAIRING)
    ===================================================================== */
 const IDB = {
   db: null,
@@ -880,7 +912,7 @@ const IDB = {
     if (this.db) return this.db;
     return new Promise(resolve => {
       try {
-        const req = indexedDB.open('TributoFxDB_v8', 1);
+        const req = indexedDB.open('TributoFxDB_v9', 1);
         req.onupgradeneeded = e => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains('candles')) db.createObjectStore('candles');
@@ -1000,7 +1032,7 @@ function zoomChart(factor) {
 $('chartWrap').addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 
 /* =====================================================================
-   HIGH-SPEED MARKET DATA ENGINE (WITH FAILSAFE RECOVERY)
+   DATA ENGINE (HIGH-SPEED WITH INSTANT FAILSAFE)
    ===================================================================== */
 function toApiSymbol(sym) {
   if (sym === 'XAUUSD' || sym === 'GOLD') return 'PAXGUSDT';
@@ -1036,12 +1068,11 @@ async function fetchBinanceKlines(target, tf, startTime, endTime, limit = 1000) 
       if (Array.isArray(data) && data.length > 0) {
         return data.map(k => ({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] }));
       }
-    } catch { /* try next endpoint */ }
+    } catch { /* try next */ }
   }
   return [];
 }
 
-// Realistic continuous market generator (Failsafe guarantee)
 function generateMarketCandles(sym, tfSec, startSec, endSec) {
   let h = 2166136261; for (const ch of sym) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); }
   let seed = h >>> 0; const rnd = () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ t >>> 15, t | 1); t ^= t + Math.imul(t ^ t >>> 7, t | 61); return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -1127,7 +1158,7 @@ async function loadData(tf, forceRefresh = false) {
         await IDB.set(key, res);
         return res;
       }
-    } catch { /* fallback to generator */ }
+    } catch { /* fallback */ }
   }
 
   const res = { 
@@ -1140,439 +1171,7 @@ async function loadData(tf, forceRefresh = false) {
 }
 
 /* =====================================================================
-   INDICATORS PIPELINE & EXECUTION
-   ===================================================================== */
-function computeInd(v, ind) {
-  ind.error = null;
-  try {
-    if (!v.cols) { ind.spec = null; return; }
-    if (ind.type === 'script') ind.spec = runScript(ind.code, v.cols);
-    else { const d = BUILTIN[ind.type]; ind.spec = Object.assign({ markers: [], hlines: [] }, d.run(v.cols, ind.params)); }
-  } catch (e) { ind.spec = null; ind.error = e.message; }
-}
-
-const indTitle = ind => ind.type === 'script' ? (ind.spec?.name || ind.name || 'Script') : BUILTIN[ind.type].name;
-const saveInds = () => {
-  const ser = v => v.IND.map(i => ({ type: i.type, params: i.params, code: i.code, name: i.name }));
-  store.set('tfx_inds', ser(V1)); store.set('tfx_inds2', ser(V2));
-};
-
-function plotPoint(v, pl, i) {
-  const t = v.candles[i].time, val = pl.values[i];
-  if (!isF(val)) return { time: t };
-  const o = { time: t, value: val }; if (pl.colors && pl.colors[i]) o.color = pl.colors[i];
-  return o;
-}
-
-function plotData(v, pl, n) {
-  const out = new Array(n);
-  for (let i = 0; i < n; i++) out[i] = plotPoint(v, pl, i);
-  return out;
-}
-
-function getSeriesForPane(v, paneIndex) {
-  if (!paneIndex) return v.c.candleSeries;
-  for (const ind of v.IND) if (ind.paneIndex === paneIndex && ind.series && ind.series.length > 0) return ind.series[0];
-  return v.c.candleSeries;
-}
-
-function fillIndicatorData(v) {
-  const n = visCount(v);
-  for (const ind of v.IND) ind.series?.forEach((sr, i) => sr.setData(plotData(v, ind.spec.plots[i], n)));
-  if (isDockActive()) {
-    dockedIndicators.forEach(d => {
-      d.seriesList.forEach((sr, i) => sr.setData(plotData(v, d.ind.spec.plots[i], n)));
-    });
-  }
-}
-
-/* =====================================================================
-   LEFT SIDE DOCK SECTION (CLEAN CHART & ALIGNED CROSSHAIR)
-   ===================================================================== */
-let dockedIndicators = [];
-
-function isDockActive() {
-  const bottomCount = V1.IND.filter(i => i.spec && !i.spec.overlay).length;
-  return S.dockInd || bottomCount > 3;
-}
-
-function updateDockVisibility() {
-  const active = isDockActive();
-  const dock = $('indDock');
-  const btn = $('btnToggleDock');
-  
-  if (active) {
-    dock.style.display = 'flex';
-    dock.style.width = (S.dockWidth || 320) + 'px';
-    if (btn) btn.classList.add('on');
-  } else {
-    dock.style.display = 'none';
-    if (btn) btn.classList.remove('on');
-  }
-}
-
-function destroyDockedIndicators() {
-  dockedIndicators.forEach(d => {
-    try { d.chart.remove(); } catch {}
-  });
-  dockedIndicators = [];
-  $('indDockList').innerHTML = '';
-  $('dockCountBadge').textContent = '0';
-}
-
-function buildDockedIndicators() {
-  destroyDockedIndicators();
-  const listEl = $('indDockList');
-  const bottomInds = V1.IND.filter(i => i.spec && !i.spec.overlay);
-  $('dockCountBadge').textContent = String(bottomInds.length);
-
-  bottomInds.forEach(ind => {
-    const card = document.createElement('div');
-    card.className = 'ind-card';
-    card.style.height = (ind.dockHeight || 135) + 'px';
-
-    const head = document.createElement('div');
-    head.className = 'ind-card-head';
-    
-    const titleEl = document.createElement('span');
-    titleEl.className = 'ind-card-title';
-    titleEl.textContent = indTitle(ind);
-    
-    const valEl = document.createElement('span');
-    valEl.className = 'ind-card-val';
-    valEl.textContent = '–';
-
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'x';
-    closeBtn.textContent = '✕';
-    closeBtn.title = 'Remove';
-    closeBtn.onclick = (e) => {
-      e.stopPropagation();
-      const realIdx = V1.IND.indexOf(ind);
-      if (realIdx >= 0) {
-        V1.IND.splice(realIdx, 1);
-        applyIndChange(V1);
-      }
-    };
-
-    const rightWrap = document.createElement('div');
-    rightWrap.style.display = 'flex';
-    rightWrap.style.alignItems = 'center';
-    rightWrap.style.gap = '8px';
-    rightWrap.append(valEl, closeBtn);
-
-    head.append(titleEl, rightWrap);
-
-    const body = document.createElement('div');
-    body.className = 'ind-card-body';
-    
-    const chartEl = document.createElement('div');
-    chartEl.className = 'ind-card-chart';
-    
-    const crossSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    crossSvg.setAttribute('class', 'ind-card-cross-svg');
-    
-    body.append(chartEl, crossSvg);
-
-    const resizer = document.createElement('div');
-    resizer.className = 'ind-card-resizer';
-    resizer.title = 'Drag up/down to adjust indicator height';
-
-    card.append(head, body, resizer);
-    listEl.append(card);
-
-    const c = LW.createChart(chartEl, {
-      autoSize: true,
-      layout: { background: { type: LW.ColorType.Solid, color: '#10142a' }, textColor: '#7f89b3', fontFamily: 'Inter, system-ui, sans-serif' },
-      grid: { vertLines: { color: 'rgba(29,35,66,0.35)' }, horzLines: { color: 'rgba(29,35,66,0.35)' } },
-      crosshair: { mode: LW.CrosshairMode.Normal },
-      rightPriceScale: { borderColor: '#1d2342', scaleMargins: { top: 0.1, bottom: 0.1 } },
-      timeScale: { visible: false, borderColor: '#1d2342' },
-      handleScroll: false,
-      handleScale: false
-    });
-
-    const seriesList = [];
-    const prec = ind.spec.precision ?? 2;
-    const fmt = { type: 'price', precision: prec, minMove: Math.pow(10, -prec) };
-
-    ind.spec.plots.forEach((pl, pi) => {
-      const hist = pl.type === 'histogram';
-      const sr = c.addSeries(hist ? LW.HistogramSeries : LW.LineSeries,
-        hist ? { color: pl.color, priceLineVisible: false, lastValueVisible: false, priceFormat: fmt }
-             : { color: pl.color, lineWidth: pl.lineWidth || 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: fmt }
-      );
-      seriesList.push(sr);
-      if (pi === 0) (ind.spec.hlines || []).forEach(h => sr.createPriceLine({ price: h.price, color: h.color, lineWidth: 1, lineStyle: LW.LineStyle.Dashed, axisLabelVisible: false, title: h.title || '' }));
-    });
-
-    const n = visCount(V1);
-    seriesList.forEach((sr, i) => sr.setData(plotData(V1, ind.spec.plots[i], n)));
-
-    // Vertical drag-to-resize
-    let startY = 0, startH = 0;
-    const onMove = e => {
-      const newH = Math.max(75, Math.min(500, startH + (e.clientY - startY)));
-      card.style.height = newH + 'px';
-      ind.dockHeight = newH;
-      c.resize(card.clientWidth, newH - 34);
-    };
-    const onUp = () => {
-      resizer.classList.remove('dragging');
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-    };
-    resizer.addEventListener('pointerdown', e => {
-      startY = e.clientY;
-      startH = card.clientHeight;
-      resizer.classList.add('dragging');
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
-    });
-
-    dockedIndicators.push({ ind, card, chart: c, seriesList, valEl, crossSvg });
-  });
-
-  syncDockedChartsRange();
-}
-
-function syncDockedChartsRange() {
-  if (!dockedIndicators.length) return;
-  const r = V1.c.chart.timeScale().getVisibleLogicalRange();
-  if (!r) return;
-  dockedIndicators.forEach(d => {
-    try { d.chart.timeScale().setVisibleLogicalRange(r); } catch {}
-  });
-}
-
-function syncDockedCrosshair(time, logical) {
-  if (!dockedIndicators.length) return;
-  const cs = V1.candles, n = visCount(V1);
-  let idx = -1;
-  if (time) idx = bsearch(V1, time);
-  if (idx < 0 && logical != null) idx = Math.min(n - 1, Math.max(0, Math.round(logical)));
-
-  dockedIndicators.forEach(d => {
-    const svg = d.crossSvg;
-    svg.innerHTML = '';
-    
-    if (time != null || logical != null) {
-      let x = null;
-      if (time != null) x = d.chart.timeScale().timeToCoordinate(time);
-      if (x == null && logical != null) x = d.chart.timeScale().logicalToCoordinate(logical);
-      if (x != null && x >= 0 && x <= d.card.clientWidth) {
-        svg.innerHTML = `<line x1="${x}" y1="0" x2="${x}" y2="${d.card.clientHeight}" stroke="rgba(255,255,255,0.45)" stroke-width="1" stroke-dasharray="3 3"/>`;
-      }
-    }
-
-    if (idx >= 0 && idx < n && d.ind.spec) {
-      const vals = d.ind.spec.plots.map(pl => {
-        const v = pl.values[idx];
-        return isF(v) ? (Math.abs(v) >= 100 ? v.toFixed(2) : v.toFixed(4)) : '–';
-      });
-      d.valEl.textContent = vals.join('  ');
-    } else {
-      d.valEl.textContent = '–';
-    }
-  });
-}
-
-// Horizontal Resizer (Dock Width)
-(function initDockHResizer() {
-  const resizer = $('dockHResizer');
-  if (!resizer) return;
-  let startX = 0, startW = 0;
-  const onMove = e => {
-    const newW = Math.max(220, Math.min(600, startW + (e.clientX - startX)));
-    S.dockWidth = newW;
-    $('indDock').style.width = newW + 'px';
-    dockedIndicators.forEach(d => d.chart.resize(newW - 14, d.card.clientHeight - 34));
-    saveSettings();
-  };
-  const onUp = () => {
-    resizer.classList.remove('dragging');
-    window.removeEventListener('pointermove', onMove);
-    window.removeEventListener('pointerup', onUp);
-  };
-  resizer.addEventListener('pointerdown', e => {
-    startX = e.clientX;
-    startW = $('indDock').clientWidth;
-    resizer.classList.add('dragging');
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  });
-})();
-
-$('btnToggleDock').onclick = () => {
-  S.dockInd = !S.dockInd;
-  saveSettings();
-  applyIndChange(V1);
-  toast(S.dockInd ? 'Indicator Dock Enabled' : 'Indicators Restored to Bottom');
-};
-
-$('btnCloseDock').onclick = () => {
-  S.dockInd = false;
-  saveSettings();
-  applyIndChange(V1);
-  toast('Dock closed — Indicators restored to bottom');
-};
-
-/* =====================================================================
-   INDICATORS SERIES REBUILD
-   ===================================================================== */
-function rebuildIndicatorSeries(v) {
-  removeDrawingObjs(v);
-  for (const ind of v.IND) { for (const sr of ind.series || []) { try { v.c.chart.removeSeries(sr); } catch { /* ignore */ } } ind.series = []; ind.paneIndex = 0; }
-
-  const dockActive = isDockActive();
-  updateDockVisibility();
-
-  if (dockActive) {
-    for (const ind of v.IND) {
-      if (!ind.spec || !ind.spec.overlay) continue;
-      ind.paneIndex = 0;
-      const prec = ind.spec.precision ?? S.prec, fmt = { type: 'price', precision: prec, minMove: Math.pow(10, -prec) };
-      ind.spec.plots.forEach(pl => {
-        const sr = v.c.chart.addSeries(LW.LineSeries, { color: pl.color, lineWidth: pl.lineWidth || 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: fmt }, 0);
-        ind.series.push(sr);
-      });
-    }
-    buildDockedIndicators();
-  } else {
-    destroyDockedIndicators();
-    let pane = 1;
-    for (const ind of v.IND) {
-      if (!ind.spec) continue;
-      if (v.hidden && !ind.spec.overlay) continue;
-      const pIdx = ind.spec.overlay ? 0 : pane++;
-      ind.paneIndex = pIdx;
-      const prec = ind.spec.precision ?? S.prec, fmt = { type: 'price', precision: prec, minMove: Math.pow(10, -prec) };
-      ind.spec.plots.forEach((pl, pi) => {
-        const hist = pl.type === 'histogram';
-        const sr = v.c.chart.addSeries(hist ? LW.HistogramSeries : LW.LineSeries,
-          hist ? { color: pl.color, priceLineVisible: false, lastValueVisible: false, priceFormat: fmt }
-               : { color: pl.color, lineWidth: pl.lineWidth || 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: fmt }, pIdx);
-        ind.series.push(sr);
-        if (pi === 0) (ind.spec.hlines || []).forEach(h => sr.createPriceLine({ price: h.price, color: h.color, lineWidth: 1, lineStyle: LW.LineStyle.Dashed, axisLabelVisible: false, title: h.title || '' }));
-      });
-    }
-    setTimeout(() => sizePanes(v), 0);
-  }
-
-  rebuildDrawingSeries(v);
-}
-
-function sizePanes(v) {
-  if (!v) { viewsNeeded().forEach(sizePanes); return; }
-  try {
-    const ps = v.c.chart.panes(); if (ps.length < 2) return;
-    const total = $(v.elId).clientHeight - 34, sub = Math.max(80, Math.round(total / (ps.length + 1.5)));
-    ps.slice(1).forEach(p => p.setHeight(sub));
-    ps[0].setHeight(Math.max(160, total - sub * (ps.length - 1)));
-  } catch { /* ignore */ }
-}
-
-let markersDirty = true;
-function refreshMarkers(force = false) {
-  if (!force && !markersDirty) return;
-  markersDirty = false;
-  for (const v of viewsNeeded()) {
-    const cs = v.candles; if (!cs.length) continue;
-    const n = visCount(v), lastT = shownLastTime(v), out = [];
-    for (const ind of v.IND) for (const m of ind.spec?.markers || []) if (m.i < n) out.push({ time: cs[m.i].time, position: m.position, shape: m.shape, color: m.color, text: m.text });
-    const addTrade = (t, side, isExit, pnl) => {
-      const ts = snapTime(v, t); if (ts < 0 || ts > lastT) return;
-      if (!isExit) out.push({ time: ts, position: side === 'long' ? 'belowBar' : 'aboveBar', shape: side === 'long' ? 'arrowUp' : 'arrowDown', color: side === 'long' ? C.up : C.dn, text: side === 'long' ? 'B' : 'S' });
-      else out.push({ time: ts, position: side === 'long' ? 'aboveBar' : 'belowBar', shape: 'circle', color: pnl >= 0 ? C.up : C.dn, text: signed(pnl) });
-    };
-    for (const p of A.positions) addTrade(p.openTime, p.side, false);
-    for (const h of A.history) if (h.symbol === S.symbol) { addTrade(h.openTime, h.side, false); addTrade(h.closeTime, h.side, true, h.pnl); }
-    out.sort((a, b) => a.time - b.time);
-    v.c.markersApi.setMarkers(out);
-  }
-}
-
-function toggleBottomIndicators(v) {
-  if (!v.IND.some(ind => ind.spec && !ind.spec.overlay) && !v.hidden) return;
-  v.hidden = !v.hidden; rebuildIndicatorSeries(v); renderAll();
-  toast(v.hidden ? 'Bottom indicators hidden' : 'Bottom indicators visible');
-}
-let lastDblTime = 0;
-VIEWS.forEach(v => $(v.elId).addEventListener('dblclick', () => { const now = Date.now(); if (now - lastDblTime < 350) return; lastDblTime = now; toggleBottomIndicators(v); }));
-
-/* =====================================================================
-   RENDER ENGINE
-   ===================================================================== */
-function replayCursor() {
-  const m = master(), cs = m.candles;
-  if (R.i >= cs.length) return cs.length ? cs[cs.length - 1].time + m.tfSec : 0;
-  return cs[R.i].time + (R.k > 0 ? m.tfSec * R.k / R.N : 0);
-}
-
-function slaveState(v) {
-  const m = master(), cs = v.candles, mc = m.candles, tf = v.tfSec, T = replayCursor();
-  let lo = 0, hi = cs.length;
-  while (lo < hi) { const mid = (lo + hi) >> 1; if (cs[mid].time + tf <= T) lo = mid + 1; else hi = mid; }
-  v.done = lo; v.form = null;
-  if (lo >= cs.length) return;
-  const c = cs[lo]; if (c.time >= T) return;
-  const bt = c.time; let a = v.agg;
-  if (!a || a.bt !== bt || a.next > R.i) {
-    let l2 = 0, h2 = mc.length; while (l2 < h2) { const mid = (l2 + h2) >> 1; if (mc[mid].time < bt) l2 = mid + 1; else h2 = mid; }
-    a = v.agg = { bt, next: l2, ok: l2 < mc.length && mc[l2].time - bt < m.tfSec, hi: -Infinity, lo: Infinity, vol: 0, last: NaN };
-  }
-  if (a.ok) {
-    while (a.next < R.i && mc[a.next].time < bt + tf) { const q = mc[a.next]; if (q.high > a.hi) a.hi = q.high; if (q.low < a.lo) a.lo = q.low; a.vol += q.volume; a.last = q.close; a.next++; }
-    let hh = a.hi, ll = a.lo, cl = a.last, vv = a.vol;
-    if (R.k > 0 && R.i < mc.length && mc[R.i].time < bt + tf) { const p = partialCandle(mc[R.i], R.k, R.N); hh = Math.max(hh, p.high); ll = Math.min(ll, p.low); cl = p.close; vv += p.volume; }
-    if (isF(cl)) { v.form = { time: bt, open: c.open, high: Math.max(hh, c.open), low: Math.min(ll, c.open), close: cl, volume: vv }; return; }
-  }
-  v.form = partialCandle(c, (T - bt) / tf, 1);
-}
-
-function syncViewStates() {
-  const m = master();
-  for (const v of viewsNeeded()) {
-    const cs = v.candles; v.agg = null;
-    if (!cs.length) { v.done = 0; v.form = null; }
-    else if (!S.replayOn) { v.done = cs.length; v.form = null; }
-    else if (v === m) { v.done = R.i; v.form = (R.k > 0 && R.i < cs.length) ? partialCandle(cs[R.i], R.k, R.N) : null; }
-    else slaveState(v);
-  }
-}
-
-function renderView(v) {
-  const cs = v.candles;
-  if (!cs.length) { v.c.candleSeries.setData([]); v.c.volSeries.setData([]); return; }
-  const n = visCount(v), cd = new Array(n), vd = new Array(n);
-  for (let i = 0; i < n; i++) { cd[i] = candleBar(cs[i]); vd[i] = volBar(cs[i], cs[i].volume); }
-  if (v.form) { cd.push(candleBar(v.form)); vd.push(volBar(v.form, v.form.volume)); }
-  v.c.candleSeries.setData(cd); v.c.volSeries.setData(vd);
-  fillIndicatorData(v);
-}
-
-function renderAll() {
-  syncViewStates();
-  for (const v of viewsNeeded()) renderView(v);
-  refreshMarkers(true); syncPriceLines();
-  for (const v of viewsNeeded()) updateLegend(v, null);
-  updateAll(); redrawRulers();
-  syncDockedChartsRange();
-}
-
-function advanceSlave(v) {
-  const old = v.done, cs = v.candles;
-  slaveState(v);
-  if (v.done < old) { renderView(v); return; }
-  for (let j = old; j < v.done; j++) {
-    v.c.candleSeries.update(candleBar(cs[j])); v.c.volSeries.update(volBar(cs[j], cs[j].volume));
-    for (const ind of v.IND) ind.series?.forEach((sr, i) => sr.update(plotPoint(v, ind.spec.plots[i], j)));
-  }
-  if (v.form) { v.c.candleSeries.update(candleBar(v.form)); v.c.volSeries.update(volBar(v.form, v.form.volume)); }
-}
-
-/* =====================================================================
-   REPLAY ENGINE
+   REPLAY LOOP
    ===================================================================== */
 const pickN = () => {
   if (S.speed === 'real') { const sec = master().tfSec || 60; return sec <= 60 ? sec : Math.min(120, Math.max(20, Math.round(sec / 5))); }
@@ -1733,7 +1332,7 @@ function checkStops(lo, hi) {
 }
 
 /* =====================================================================
-   DRAGGABLE TP/SL & ENTRY OVERLAY
+   DRAGGABLE TP/SL OVERLAY
    ===================================================================== */
 const pipSize = price => S.prec >= 3 ? Math.pow(10, -(S.prec - 1)) : (price >= 1000 ? 1 : 0.1);
 const levelPnl = (p, price) => (price - p.entry) * p.qty * dirOf(p) - p.fees - price * p.qty * feePct() / 100;
@@ -2236,7 +1835,7 @@ $('paneChart1').addEventListener('pointerdown', () => setActive(1), true);
 $('paneChart2').addEventListener('pointerdown', () => setActive(2), true);
 
 /* =====================================================================
-   INDICATORS & SCRIPT MODAL
+   INDICATORS & SCRIPT MODAL (WITH LIVE RE-SYNC)
    ===================================================================== */
 function openModal(id) { $(id).hidden = false; }
 document.querySelectorAll('.modal').forEach(m => {
@@ -2262,7 +1861,16 @@ function renderIndModal() {
   const v = AV();
   $('indTitle').textContent = `Indicators — Chart ${v.n === 1 ? 'A' : 'B'} (${v.tf})`;
   const av = $('indAvail'); av.innerHTML = '';
-  for (const [type, d] of Object.entries(BUILTIN)) av.append(el('button', { class: 'chip', onclick: () => addBuiltin(type) }, '+ ' + d.name));
+  
+  // Re-sync with external plugins if present
+  if (window.TFX_EXTRA_INDICATORS) {
+    Object.assign(BUILTIN, window.TFX_EXTRA_INDICATORS);
+  }
+
+  for (const [type, d] of Object.entries(BUILTIN)) {
+    av.append(el('button', { class: 'chip', onclick: () => addBuiltin(type) }, '+ ' + d.name));
+  }
+
   const ac = $('indActive'); ac.innerHTML = '';
   if (!v.IND.length) ac.append(el('div', { class: 'muted' }, 'No indicators yet.'));
   v.IND.forEach((ind, idx) => {
@@ -2280,7 +1888,14 @@ function renderIndModal() {
     ac.append(el('div', { class: 'arow' }, head, ps, ind.error ? el('div', { class: 'err' }, ind.error) : ''));
   });
 }
-$('btnInd').onclick = () => { renderIndModal(); openModal('modalInd'); };
+
+$('btnInd').onclick = () => {
+  if (window.TFX_EXTRA_INDICATORS) {
+    Object.assign(BUILTIN, window.TFX_EXTRA_INDICATORS);
+  }
+  renderIndModal();
+  openModal('modalInd');
+};
 $('btnCopyInd').onclick = copyIndAtoB;
 $('btnCopyInd2').onclick = copyIndAtoB;
 
@@ -2452,8 +2067,8 @@ $('speedIcon').onclick = () => {
 };
 
 $('btnFit').onclick = () => { C1.chart.timeScale().fitContent(); C2.chart.timeScale().fitContent(); };
-$('btnZoomIn').onclick = () => zoomChart(0.7);
-$('btnZoomOut').onclick = () => zoomChart(1.4);
+$('btnZoomIn').onclick = zoomChart(0.7);
+$('btnZoomOut').onclick = zoomChart(1.4);
 $('btnZoomReset').onclick = () => { C1.chart.timeScale().fitContent(); C2.chart.timeScale().fitContent(); };
 
 let sidePanelOpen = true;
@@ -2501,7 +2116,7 @@ document.addEventListener('keydown', e => {
 setInterval(() => { $('clockTxt').textContent = new Date().toLocaleString('en-GB', { hour12: false }); }, 1000);
 
 /* =====================================================================
-   STARTUP INITIALIZATION
+   BOOTSTRAP
    ===================================================================== */
 (function init() {
   initDomCache();
