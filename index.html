@@ -587,6 +587,241 @@ const INSTRUMENTS = [
 ];
 
 /* =====================================================================
+   PASTE THIS BLOCK right AFTER the `const INSTRUMENTS = [ ... ];` array
+   and BEFORE the "TECHNICAL ANALYSIS (TA) LIBRARY" comment.
+   Nothing else in your file needs to change.
+   ===================================================================== */
+
+/* ---------- DOM helpers ---------- */
+const $ = id => document.getElementById(id);
+function el(tag, attrs, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v == null || v === false) continue;
+    if (k.startsWith('on') && typeof v === 'function') e[k] = v;
+    else e.setAttribute(k, v);
+  }
+  for (const k of kids.flat()) {
+    if (k == null || k === false) continue;
+    e.append(k.nodeType ? k : document.createTextNode(String(k)));
+  }
+  return e;
+}
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
+};
+
+/* ---------- Constants & state ---------- */
+const TF = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
+const C = { up: '#00e5a0', dn: '#ff3d71' };
+const S = Object.assign({
+  symbol: 'XAUUSD', tf: '15m', tf2: '15m', range: 'year', source: 'auto', speed: 2,
+  replayOn: true, spreadOn: true, broker: 'XM', layout: 'single', dockInd: false, dockWidth: 320, prec: 2
+}, store.get('tfx_settings', {}));
+if (!TF[S.tf]) S.tf = '15m';
+if (!TF[S.tf2]) S.tf2 = S.tf;
+function saveSettings() { S.tf = V1.tf; S.tf2 = V2.tf; store.set('tfx_settings', S); }
+
+const A = Object.assign({ balance: 10000, startBal: 10000, positions: [], history: [], nextId: 1 }, store.get('tfx_acct', {}));
+function saveAcct() {
+  store.set('tfx_acct', { balance: A.balance, startBal: A.startBal, nextId: A.nextId,
+    positions: A.positions.map(p => Object.assign({}, p, { ui: false })), history: A.history.slice(0, 500) });
+}
+const R = { i: 0, k: 0, N: 8, playing: false, timer: null, ph: 0, pl: 0, speed: 2 };
+const Pz = { last: 0, bid: 0, ask: 0, spread: 0, time: 0 };
+const dom = {};
+function initDomCache() {
+  ['accBal', 'accEq', 'accUpl', 'accMar', 'accFree', 'accNet', 'btnBuy', 'btnSell', 'stPrice', 'stSpread', 'stData', 'stSrc', 'repInfo', 'loading', 'loadTxt']
+    .forEach(id => dom[id] = $(id));
+}
+let activeChartIndex = 1;
+
+/* ---------- Charts & views ---------- */
+function makeChart(id) {
+  const chart = LW.createChart($(id), {
+    autoSize: true,
+    layout: { background: { type: LW.ColorType.Solid, color: '#0b0e1a' }, textColor: '#7f89b3', fontFamily: 'Inter, system-ui, sans-serif' },
+    grid: { vertLines: { color: 'rgba(29,35,66,0.45)' }, horzLines: { color: 'rgba(29,35,66,0.45)' } },
+    crosshair: { mode: LW.CrosshairMode.Normal },
+    rightPriceScale: { borderColor: '#1d2342' },
+    timeScale: { borderColor: '#1d2342', timeVisible: true, secondsVisible: false }
+  });
+  const candleSeries = chart.addSeries(LW.CandlestickSeries, { upColor: C.up, downColor: C.dn, borderVisible: false, wickUpColor: C.up, wickDownColor: C.dn }, 0);
+  const volSeries = chart.addSeries(LW.HistogramSeries, { priceFormat: { type: 'volume' }, priceScaleId: 'vol', priceLineVisible: false, lastValueVisible: false }, 0);
+  chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+  const markersApi = LW.createSeriesMarkers(candleSeries, []);
+  return { chart, candleSeries, volSeries, markersApi };
+}
+const C1 = makeChart('chart'), C2 = makeChart('chart2');
+
+function mkView(n) {
+  const tf = n === 1 ? S.tf : S.tf2;
+  return { n, c: n === 1 ? C1 : C2, elId: n === 1 ? 'chart' : 'chart2', paneId: n === 1 ? 'paneChart1' : 'paneChart2',
+    legId: n === 1 ? 'legend' : 'legend2', svgId: n === 1 ? 'rulerSvg1' : 'rulerSvg2',
+    tf, tfSec: TF[tf], candles: [], cols: colsOf([]), IND: [], drawings: [], posLines: [], askLine: null,
+    hidden: false, done: 0, form: null, agg: null, key: '', ruler: null, crossIdx: null, crossBar: null,
+    srcUsed: '', layer: null, posEls: null };
+}
+const V1 = mkView(1), V2 = mkView(2), VIEWS = [V1, V2];
+const AV = () => (activeChartIndex === 2 && S.layout !== 'single') ? V2 : V1;
+const master = () => V1;
+const viewsNeeded = () => S.layout === 'single' ? [V1] : [V1, V2];
+const visCount = v => Math.min(v.done || 0, v.candles ? v.candles.length : 0);
+const keyOf = v => `${S.symbol}|${v.tf}|${S.range}|${S.source}`;
+
+function shownLastTime(v) {
+  const cs = v.candles; if (!cs || !cs.length) return 0;
+  if (v.form) return v.form.time;
+  const n = visCount(v); return n > 0 ? cs[n - 1].time : 0;
+}
+function snapTime(v, t) {
+  const cs = v.candles; if (!cs || !cs.length || t == null) return -1;
+  let lo = 0, hi = cs.length - 1, r = -1;
+  while (lo <= hi) { const m = (lo + hi) >> 1; if (cs[m].time <= t) { r = m; lo = m + 1; } else hi = m - 1; }
+  return r < 0 ? -1 : cs[r].time;
+}
+
+/* ---------- Formatting & bar helpers ---------- */
+const signed = n => (n > 0 ? '+' : '') + (+n || 0).toFixed(2);
+const fmtP = x => (x == null || !isF(x)) ? '–' : (+x).toFixed(S.prec);
+const fmtMoney = x => (+x || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtDT = t => new Date(t * 1000).toISOString().replace('T', ' ').slice(0, 16);
+const candleBar = c => ({ time: c.time, open: c.open, high: c.high, low: c.low, close: c.close });
+const volBar = (c, vol) => ({ time: c.time, value: vol, color: c.close >= c.open ? 'rgba(0,229,160,.35)' : 'rgba(255,61,113,.35)' });
+
+function toast(msg) {
+  const t = $('toast'); if (!t) return;
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+function setPrecision() {
+  const cs = master().candles; if (!cs || !cs.length) return;
+  const p = cs[cs.length - 1].close;
+  S.prec = p >= 1000 ? 2 : p >= 10 ? 3 : p >= 1 ? 5 : 6;
+  VIEWS.forEach(v => v.c.candleSeries.applyOptions({ priceFormat: { type: 'price', precision: S.prec, minMove: Math.pow(10, -S.prec) } }));
+}
+
+function updateBidAsk(price) {
+  if (!price) return;
+  Pz.last = price; Pz.bid = price;
+  if (S.spreadOn) {
+    const tbl = BROKER_SPREADS[S.broker] || BROKER_SPREADS.XM;
+    let sp = tbl[S.symbol];
+    if (sp == null) sp = (tbl.defaultPips || 1) * (S.prec >= 3 ? Math.pow(10, -(S.prec - 1)) : 0.1);
+    Pz.spread = sp; Pz.ask = price + sp;
+  } else { Pz.spread = 0; Pz.ask = price; }
+}
+
+function zoomChart(f) {
+  const ts = AV().c.chart.timeScale(), r = ts.getVisibleLogicalRange(); if (!r) return;
+  const mid = (r.from + r.to) / 2, half = (r.to - r.from) / 2 * f;
+  ts.setVisibleLogicalRange({ from: mid - half, to: mid + half });
+}
+
+/* ---------- Data loading (Binance + offline demo) ---------- */
+const _cache = new Map();
+const BMAP = { XAUUSD: 'PAXGUSDT', EURUSD: 'EURUSDT', GBPUSD: 'GBPUSDT' };
+function rangeStart(tfSec) {
+  const now = Date.now() / 1000; let s;
+  if (S.range === '30d') s = now - 30 * 86400;
+  else if (S.range === '90d') s = now - 90 * 86400;
+  else s = Date.UTC(new Date().getUTCFullYear(), 0, 1) / 1000;
+  return Math.floor(Math.max(s, now - 40000 * tfSec) / tfSec) * tfSec;
+}
+async function fetchBinance(sym, tf, start) {
+  let lastErr;
+  for (const base of ['https://api.binance.com', 'https://data-api.binance.vision']) {
+    try {
+      const out = []; let t = start * 1000;
+      for (let pg = 0; pg < 60; pg++) {
+        const r = await fetch(`${base}/api/v3/klines?symbol=${sym}&interval=${tf}&startTime=${t}&limit=1000`);
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const a = await r.json(); if (!a.length) break;
+        for (const k of a) out.push({ time: Math.floor(k[0] / 1000), open: +k[1], high: +k[2], low: +k[3], close: +k[4], volume: +k[5] });
+        t = a[a.length - 1][0] + 1; if (a.length < 1000) break;
+      }
+      if (!out.length) throw new Error('No data');
+      return out;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr;
+}
+function demoCandles(sym, tfSec, start) {
+  const base = { XAUUSD: 4000, PAXGUSDT: 4000, BTCUSDT: 90000, ETHUSDT: 3500, SOLUSDT: 180, BNBUSDT: 650, XRPUSDT: 2.2, EURUSD: 1.08, GBPUSD: 1.27,
+    USDJPY: 150, GBPJPY: 190, AUDUSD: 0.66, EURUSDT: 1.08, GBPUSDT: 1.27, NAS100: 20000, US100: 20000, USTEC: 20000, NQ: 20000, USOIL: 75, UKOIL: 80 }[sym] || 100;
+  let h = 0; for (const ch of sym + tfSec) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  const rnd = () => { h |= 0; h = h + 0x6D2B79F5 | 0; let t = Math.imul(h ^ h >>> 15, 1 | h); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const g = () => { let u = 0; for (let i = 0; i < 6; i++) u += rnd(); return (u - 3) / Math.sqrt(0.5); };
+  const now = Math.floor(Date.now() / 1000 / tfSec) * tfSec, vol = base * 0.0007 * Math.sqrt(tfSec / 900), out = [];
+  let prev = base, i = 0;
+  for (let t = start; t < now && i < 40000; t += tfSec, i++) {
+    const o = prev, cl = Math.max(base * 0.05, o + o * 0 + vol * g() + Math.sin(i / 400) * vol * 0.1);
+    const hi = Math.max(o, cl) + Math.abs(g()) * vol * 0.5, lo = Math.min(o, cl) - Math.abs(g()) * vol * 0.5;
+    out.push({ time: t, open: o, high: hi, low: Math.max(lo, 0.0001), close: cl, volume: Math.round(100 + rnd() * 900) });
+    prev = cl;
+  }
+  return out;
+}
+async function loadData(tf, force) {
+  const tfSec = TF[tf], start = rangeStart(tfSec), key = `${S.symbol}|${tf}|${S.range}|${S.source}`;
+  if (!force && _cache.has(key)) return _cache.get(key);
+  let res = null;
+  const sym = BMAP[S.symbol] || (/USDT$/.test(S.symbol) ? S.symbol : null);
+  if (S.source !== 'demo') {
+    try {
+      if (!sym) throw new Error(S.symbol + ' is not available on Binance');
+      res = { candles: await fetchBinance(sym, tf, start), source: 'BINANCE ' + sym };
+    } catch (e) { if (S.source === 'binance') throw e; console.warn('Binance failed, using demo:', e.message); }
+  }
+  if (!res) res = { candles: demoCandles(S.symbol, tfSec, start), source: 'DEMO' };
+  _cache.set(key, res); return res;
+}
+
+/* ---------- Script templates ---------- */
+const TEMPLATES = {
+  'EMA Cross (9/21)': `indicator({ name: 'EMA Cross', overlay: true });
+plot(ta.ema(close, 9), { title: 'EMA 9', color: '#00e5a0' });
+plot(ta.ema(close, 21), { title: 'EMA 21', color: '#ff3d71' });`,
+  'ATR (14)': `indicator({ name: 'ATR 14', overlay: false });
+plot(ta.atr(high, low, close, 14), { title: 'ATR', color: '#ffd43b' });`,
+  'Momentum (10)': `indicator({ name: 'Momentum 10', overlay: false });
+const m = close.map((v, i) => i >= 10 ? v - close[i - 10] : NaN);
+plot(m, { title: 'MOM', color: '#00f0ff', style: 'histogram' });
+hline(0, { color: '#4a5380' });`
+};
+
+/* ---------- Wiring that init() never did (runs right after init) ---------- */
+setTimeout(() => {
+  const tplSel = $('tplSel');
+  if (tplSel) Object.keys(TEMPLATES).forEach(k => tplSel.append(el('option', { value: k }, k)));
+
+  VIEWS.forEach(v => {
+    v.c.chart.subscribeClick(p => { if (viewsNeeded().includes(v)) handleDrawingClick(p, v); });
+    v.c.chart.subscribeCrosshairMove(p => { rulerMove(v, p); followDot(v, p); });
+    v.c.chart.timeScale().subscribeVisibleLogicalRangeChange(() => redrawRulers());
+  });
+
+  const toggleDock = on => {
+    S.dockInd = on; saveSettings();
+    rebuildIndicatorSeries(V1); renderAll();
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 50);
+  };
+  $('btnToggleDock').onclick = () => toggleDock(!S.dockInd);
+  $('btnCloseDock').onclick = () => toggleDock(false);
+
+  const rz = $('dockHResizer');
+  rz.addEventListener('pointerdown', e => {
+    e.preventDefault(); rz.classList.add('dragging');
+    const sx = e.clientX, sw = $('indDock').clientWidth;
+    const mv = ev => { S.dockWidth = Math.max(220, Math.min(550, sw + ev.clientX - sx)); $('indDock').style.width = S.dockWidth + 'px'; syncDockedChartsRange(); };
+    const up = () => { rz.classList.remove('dragging'); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); saveSettings(); };
+    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+  });
+}, 0);
+
+/* =====================================================================
    TECHNICAL ANALYSIS (TA) LIBRARY
    ===================================================================== */
 const ta = {
@@ -698,7 +933,7 @@ const ta = {
       const hl2 = (h[i] + l[i]) / 2, ub = hl2 + mult * atr[i], lb = hl2 - mult * atr[i];
       if (!started) { fub = ub; flb = lb; dir = 1; started = true; }
       else {
-        const pf = fub, pl = flb;
+        const pf = average => fub, pl = flb;
         fub = (ub < pf || c[i - 1] > pf) ? ub : pf;
         flb = (lb > pl || c[i - 1] < pl) ? lb : pl;
         if (dir === -1 && c[i] > fub) dir = 1; else if (dir === 1 && c[i] < flb) dir = -1;
