@@ -4,16 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Tributo Fx — Chart &amp; Practice Trading</title>
-<!-- Free library: TradingView Lightweight Charts (Apache-2.0). Needs internet for the CDN + free market data APIs. -->
 <script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
-
-<!-- External MT5 Indicators Plugin -->
 <script src="extra-indicators.js"></script>
 
 <style>
 :root{
   --bg:#0b0e1a; --panel:#10142a; --panel2:#151a35; --line:#1d2342; --text:#d7ddf5; --muted:#7f89b3;
   --cyan:#00f0ff; --violet:#8a2be2; --pink:#ff2bd6; --up:#00e5a0; --dn:#ff3d71; --gold:#ffd43b; --bb-amber:#ff9900;
+  --ind-dock-w: 0px;
 }
 *{box-sizing:border-box}
 html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font:13px/1.35 Inter,system-ui,Segoe UI,Roboto,sans-serif}
@@ -40,15 +38,63 @@ input[type=checkbox]{accent-color:var(--violet)}
 .sp{flex:1}
 .muted{color:var(--muted)}
 .up{color:var(--up)} .dn{color:var(--dn)}
-.main{display:grid;grid-template-columns:46px 1fr 350px;min-height:0;transition:grid-template-columns .2s ease}
-.main.side-collapsed{grid-template-columns:46px 1fr 0px}
+
+/* Responsive Grid Layout supporting Left Indicator Section */
+.main{display:grid;grid-template-columns:46px 0px minmax(0, 1fr) 350px;min-height:0;transition:grid-template-columns .15s ease}
+.main.has-dock{grid-template-columns:46px var(--ind-dock-w, 330px) minmax(0, 1fr) 350px}
+.main.side-collapsed{grid-template-columns:46px 0px minmax(0, 1fr) 0px}
+.main.has-dock.side-collapsed{grid-template-columns:46px var(--ind-dock-w, 330px) minmax(0, 1fr) 0px}
 .main.side-collapsed .side{display:none}
 .tools{background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;padding-top:8px;gap:6px}
 .tools button{width:34px;height:34px;border-radius:8px;border:1px solid transparent;background:none;font-size:15px}
 .tools button:hover{background:var(--panel2)}
 .tools button.on{border-color:var(--cyan);box-shadow:0 0 10px rgba(0,240,255,.35)}
 
-/* Multi-chart Layout Container */
+/* Left Side Indicator Panel (Dock) */
+.ind-dock{
+  background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;
+  min-height:0;overflow:hidden;position:relative;user-select:none;
+}
+.ind-dock-head{
+  display:flex;align-items:center;justify-content:space-between;padding:8px 10px;
+  background:#0c1024;border-bottom:1px solid var(--line);font-size:11.5px;font-weight:700;
+}
+.ind-dock-badge{background:var(--panel2);border:1px solid var(--line);padding:2px 6px;border-radius:10px;color:var(--cyan);font-size:10px}
+.ind-dock-list{flex:1;overflow-y:auto;padding:8px 6px;display:flex;flex-direction:column;gap:8px}
+.ind-dock-list::-webkit-scrollbar{width:4px}
+.ind-dock-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
+
+/* Individual Indicator Cards in Left Section */
+.ind-card{
+  background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+  display:flex;flex-direction:column;overflow:hidden;position:relative;box-shadow:0 4px 12px rgba(0,0,0,0.25);
+}
+.ind-card.active{border-color:rgba(0,240,255,0.5)}
+.ind-card-head{
+  display:flex;align-items:center;justify-content:space-between;padding:5px 8px;
+  background:#111633;border-bottom:1px solid rgba(29,35,66,0.8);font-size:11px;
+}
+.ind-card-title{font-weight:700;color:var(--text);display:flex;align-items:center;gap:6px}
+.ind-card-val{font-variant-numeric:tabular-nums;font-weight:700;color:var(--cyan);font-size:11px}
+.ind-card-body{position:relative;width:100%;flex:1;min-height:90px}
+.ind-card-chart{position:absolute;inset:0}
+.ind-card-cross-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:10}
+
+/* Vertical Height Drag Handle per Card */
+.ind-card-resizer{
+  height:7px;background:rgba(29,35,66,0.6);cursor:ns-resize;display:flex;align-items:center;justify-content:center;
+  transition:background .15s;
+}
+.ind-card-resizer:hover, .ind-card-resizer.dragging{background:var(--violet)}
+.ind-card-resizer::after{content:'';width:22px;height:2px;background:rgba(255,255,255,0.25);border-radius:2px}
+
+/* Horizontal Panel Width Resizer */
+.dock-h-resizer{
+  position:absolute;top:0;right:-4px;width:8px;bottom:0;cursor:ew-resize;z-index:20;
+}
+.dock-h-resizer:hover, .dock-h-resizer.dragging{background:rgba(138,43,226,0.4)}
+
+/* Chart Wrapper */
 #chartWrap{position:relative;min-width:0;min-height:0;display:grid;grid-template-columns:1fr;grid-template-rows:1fr;width:100%;height:100%}
 #chartWrap.split-horz{grid-template-rows:1fr 1fr;grid-template-columns:1fr}
 #chartWrap.split-vert{grid-template-columns:1fr 1fr;grid-template-rows:1fr}
@@ -62,7 +108,6 @@ input[type=checkbox]{accent-color:var(--violet)}
 #legend .inds,#legend2 .inds{margin-top:3px;font-size:11.5px}
 #legend .inds span,#legend2 .inds span{margin-right:10px}
 
-/* Target Dot for Drawing Tools */
 .draw-crosshair-dot{
   position:absolute;width:18px;height:18px;border-radius:50%;
   background:rgba(0,229,160,0.5);border:2px solid #00e5a0;
@@ -119,7 +164,6 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 #toast{position:fixed;left:50%;bottom:40px;transform:translateX(-50%);background:#1b2145;border:1px solid var(--violet);padding:8px 16px;border-radius:8px;z-index:99;opacity:0;pointer-events:none;transition:opacity .2s}
 #toast.show{opacity:1}
 
-/* Floating Zoom controls */
 .chart-zoom-controls{
   position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:15;
   display:flex;align-items:center;gap:2px;background:rgba(16,20,42,0.82);
@@ -130,54 +174,40 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 .chart-zoom-controls button{
   background:none;border:0;color:var(--text);font-size:16px;font-weight:700;width:28px;height:28px;
   display:inline-flex;align-items:center;justify-content:center;border-radius:50%;cursor:pointer;padding:0;
-  transition:background .15s,color .15s,transform .1s;
 }
 .chart-zoom-controls button:hover{background:rgba(138,43,226,0.35);color:var(--cyan);transform:scale(1.1)}
-.chart-zoom-controls button:active{transform:scale(0.95)}
 .chart-zoom-controls .sep{width:1px;height:14px;background:var(--line);margin:0 2px}
 
 #btnSideToggleFloat{
   position:absolute;right:10px;top:10px;z-index:15;width:30px;height:30px;border-radius:7px;
   background:rgba(16,20,42,0.85);backdrop-filter:blur(6px);border:1px solid var(--line);
-  color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;transition:all .2s;
+  color:var(--muted);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;
 }
-#btnSideToggleFloat:hover{border-color:var(--cyan);color:var(--text);box-shadow:0 0 10px rgba(0,240,255,0.35)}
+#btnSideToggleFloat:hover{border-color:var(--cyan);color:var(--text)}
 
 .speed-ctrl{display:inline-flex;align-items:center;gap:2px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:1px 4px}
-.speed-btn{background:none;border:0;padding:2px 4px;cursor:pointer;font-size:13px;line-height:1;border-radius:4px;color:var(--text);transition:background .15s, transform .1s}
-.speed-btn:hover{background:rgba(138,43,226,.28);transform:scale(1.15)}
-.speed-btn:active{transform:scale(0.95)}
-#speedIcon{font-style:normal;cursor:pointer;font-size:13px;padding:0 3px;user-select:none;transition:transform .15s}
-#speedIcon:hover{transform:scale(1.2)}
+.speed-btn{background:none;border:0;padding:2px 4px;cursor:pointer;font-size:13px;line-height:1;border-radius:4px;color:var(--text)}
+.speed-btn:hover{background:rgba(138,43,226,.28)}
+#speedIcon{font-style:normal;cursor:pointer;font-size:13px;padding:0 3px;user-select:none}
 
-/* Bloomberg Style Instrument Modal */
 .sym-box{position:relative;display:inline-flex;align-items:center}
 #symInput{cursor:pointer;font-weight:700;letter-spacing:.5px;background:linear-gradient(180deg,#121733,#0d1124);color:var(--bb-amber);border-color:rgba(255,153,0,.45)}
-#symInput:hover{border-color:var(--bb-amber);box-shadow:0 0 10px rgba(255,153,0,.3)}
 .bb-modal{position:fixed;inset:0;z-index:95;background:rgba(4,6,12,.82);backdrop-filter:blur(7px);display:flex;align-items:center;justify-content:center}
 .bb-modal[hidden]{display:none}
-.bb-box{width:min(780px,94vw);max-height:86vh;background:#090d19;border:1px solid #ff9900;border-radius:8px;box-shadow:0 0 45px rgba(255,153,0,.25),inset 0 0 20px rgba(0,0,0,.6);display:flex;flex-direction:column;font-family:Consolas,SF Mono,Menlo,"Roboto Mono",monospace;overflow:hidden}
+.bb-box{width:min(780px,94vw);max-height:86vh;background:#090d19;border:1px solid #ff9900;border-radius:8px;box-shadow:0 0 45px rgba(255,153,0,.25);display:flex;flex-direction:column;font-family:Consolas,SF Mono,Menlo,monospace}
 .bb-head{background:linear-gradient(90deg,#181404,#2b1d02 40%,#181404);border-bottom:1px solid #ff9900;padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
-.bb-head-title{color:#ff9900;font-weight:800;font-size:13px;letter-spacing:1px;display:flex;align-items:center;gap:8px}
-.bb-head-title span{color:#ffcc66;font-size:11px;font-weight:400}
-.bb-searchbar{padding:10px 14px;background:#0c1122;border-bottom:1px solid #1a2240;display:flex;gap:10px;align-items:center}
-.bb-input{flex:1;background:#050811;border:1px solid #2b355d;color:#fff;font-family:inherit;font-size:14px;padding:8px 12px;border-radius:4px}
-.bb-input:focus{border-color:#ff9900;box-shadow:0 0 10px rgba(255,153,0,.35)}
+.bb-head-title{color:#ff9900;font-weight:800;font-size:13px}
+.bb-searchbar{padding:10px 14px;background:#0c1122;border-bottom:1px solid #1a2240;display:flex;gap:10px}
+.bb-input{flex:1;background:#050811;border:1px solid #2b355d;color:#fff;font-size:14px;padding:8px 12px;border-radius:4px}
 .bb-tabs{display:flex;background:#090e1d;border-bottom:1px solid #1a2240;overflow-x:auto}
-.bb-tab{background:none;border:0;border-right:1px solid #141b33;color:#828eaf;padding:8px 14px;font-size:11.5px;font-family:inherit;cursor:pointer;white-space:nowrap;transition:all .15s}
-.bb-tab:hover{color:#ffcc66;background:#101730}
+.bb-tab{background:none;border:0;border-right:1px solid #141b33;color:#828eaf;padding:8px 14px;font-size:11.5px;cursor:pointer;white-space:nowrap}
 .bb-tab.on{color:#000;background:#ff9900;font-weight:700}
 .bb-list{overflow-y:auto;max-height:50vh;padding:4px 0}
-.bb-item{display:grid;grid-template-columns:110px 1fr 100px 90px;align-items:center;padding:8px 14px;border-bottom:1px solid #101529;cursor:pointer;transition:background .12s,color .12s;font-size:12px}
+.bb-item{display:grid;grid-template-columns:110px 1fr 100px 90px;align-items:center;padding:8px 14px;border-bottom:1px solid #101529;cursor:pointer;font-size:12px}
 .bb-item:hover, .bb-item.active{background:#1d1808;border-color:#ff9900}
-.bb-item:hover .bb-sym, .bb-item.active .bb-sym{color:#00f0ff;text-shadow:0 0 8px rgba(0,240,255,.5)}
-.bb-sym{font-weight:700;color:#ff9900;letter-spacing:.6px}
-.bb-name{color:#d7ddf5;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding-right:12px}
-.bb-cat{color:#737fa8;font-size:10.5px;text-transform:uppercase}
-.bb-tag{justify-self:end;font-size:10px;padding:2px 6px;border-radius:3px;background:#141b33;border:1px solid #232d52;color:#9eb0e6}
+.bb-sym{font-weight:700;color:#ff9900}
 .bb-foot{background:#090d19;border-top:1px solid #1a2240;padding:8px 14px;font-size:11px;color:#6c789e;display:flex;justify-content:space-between}
 
-@media(max-width:1000px){.main{grid-template-columns:46px 1fr}.side{display:none}}
 .ruler-svg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:30}
 .pl-layer{position:absolute;inset:0;pointer-events:none;z-index:35;overflow:hidden}
 .pl-line{position:absolute;left:0;right:0;height:0;border-top:1px dashed}
@@ -222,6 +252,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     <button class="btn" id="btnUpdateData" title="Update / Refresh market data from server">↻ Update Data</button>
     <button class="btn" id="btnInd">ƒx Indicators</button>
     <button class="btn" id="btnCopyInd" title="Copy ALL indicators + settings from chart A to chart B">⇉ A→B Indicators</button>
+    <button class="btn" id="btnToggleDock" title="Toggle Left Indicator Section">⧉ Dock Left</button>
     <button class="btn" id="btnScript">{ } Scripts</button>
     <div class="sp"></div>
     <button class="btn" id="btnToggleSide" title="Hide/Show right trading panel">◨ Panel</button>
@@ -244,10 +275,10 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <select id="speedSel" title="Replay speed / market pace" style="border:0;background:transparent;padding:3px 3px">
         <optgroup label="Live / Realistic Slow">
           <option value="real">⏱ Real Live (1:1 TF)</option>
-          <option value="0.02">🐢 0.02 c/s (~50s tick)</option>
-          <option value="0.05">🐢 0.05 c/s (1s tick)</option>
-          <option value="0.1">🐢 0.1 c/s (~10s tick)</option>
-          <option value="0.25">🐢 0.25 c/s (~4s tick)</option>
+          <option value="0.02">🐢 0.02 c/s</option>
+          <option value="0.05">🐢 0.05 c/s</option>
+          <option value="0.1">🐢 0.1 c/s</option>
+          <option value="0.25">🐢 0.25 c/s</option>
         </optgroup>
         <optgroup label="Standard / Moderate">
           <option value="0.5">0.5 candle/s</option>
@@ -255,12 +286,12 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
           <option value="2" selected>2 candles/s</option>
           <option value="5">5 candles/s</option>
           <option value="10">10 candles/s</option>
-          <option value="30">30 candles/s (Moderate max)</option>
+          <option value="30">30 candles/s</option>
         </optgroup>
         <optgroup label="Fast &amp; 10X Speed">
-          <option value="60">⚡ 60 candle/s (2X fast)</option>
-          <option value="120">⚡ 120 candle/s (4X fast)</option>
-          <option value="300">🚀 300 candle/s (10X ultra)</option>
+          <option value="60">⚡ 60 candle/s</option>
+          <option value="120">⚡ 120 candle/s</option>
+          <option value="300">🚀 300 candle/s</option>
         </optgroup>
       </select>
       <button id="btnSpeedUp" class="speed-btn" title="Faster speed (🐇)">🐇</button>
@@ -271,17 +302,29 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     <span class="muted">Keys: Space play · → candle · B buy · S sell</span>
   </div>
 
-  <!-- ===== Main ===== -->
-  <div class="main">
+  <!-- ===== Main Layout ===== -->
+  <div class="main" id="mainLayout">
     <div class="tools">
       <button id="toolCursor" class="on" title="Cursor">✛</button>
-      <button id="toolH" title="Horizontal line (click any chart/indicator)">━</button>
-      <button id="toolTrend" title="Trend line (2 clicks on any chart/indicator)">⟋</button>
-      <button id="toolRuler" title="Ruler measurement tool (TradingView style)">📏</button>
+      <button id="toolH" title="Horizontal line">━</button>
+      <button id="toolTrend" title="Trend line">⟋</button>
+      <button id="toolRuler" title="Ruler measurement tool">📏</button>
       <button id="toolClear" title="Remove all drawings">🗑</button>
       <button id="btnFit" title="Fit chart">⤢</button>
     </div>
 
+    <!-- NEW LEFT SECTION: Dedicated Resizable Indicator Dock Panel -->
+    <div id="indDock" class="ind-dock" style="display:none">
+      <div class="ind-dock-head">
+        <span>INDICATOR DOCK <span id="dockCountBadge" class="ind-dock-badge">0</span></span>
+        <button class="x" id="btnCloseDock" title="Undock to bottom panes" style="font-size:11px;padding:2px 5px">⇋ Bottom</button>
+      </div>
+      <div class="ind-dock-list" id="indDockList"></div>
+      <!-- Horizontal Resizer (Width) -->
+      <div class="dock-h-resizer" id="dockHResizer" title="Drag to adjust dock width"></div>
+    </div>
+
+    <!-- Chart Wrapper Supporting Split-Screen Mode -->
     <div id="chartWrap">
       <div id="paneChart1" class="chart-pane-wrap active-pane">
         <div id="chart" class="chart-view"></div>
@@ -324,7 +367,6 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 
       <div class="card">
         <h4>Order &amp; Spread Simulation</h4>
-        
         <div class="grid2" style="margin-bottom:10px;background:var(--panel2);padding:8px;border-radius:6px;border:1px solid var(--line)">
           <div class="field">
             <label style="display:flex;align-items:center;gap:6px">
@@ -382,11 +424,11 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
     <span id="stSpread" style="color:var(--gold)">-</span>
     <span id="stSrc"></span>
     <div class="sp"></div>
-    <span>Tributo Fx · double-click chart to toggle bottom indicators</span>
+    <span>Tributo Fx · clean chart mode auto-docks when &gt; 3 indicators</span>
   </div>
 </div>
 
-<!-- ===== Instrument Directory Modal ===== -->
+<!-- Modal: Bloomberg Instrument -->
 <div class="bb-modal" id="bbModal" hidden>
   <div class="bb-box">
     <div class="bb-head">
@@ -394,7 +436,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <button class="x" id="bbClose" style="border:0;color:#ff9900;font-size:14px">ESC ✕</button>
     </div>
     <div class="bb-searchbar">
-      <input type="text" id="bbSearch" class="bb-input" placeholder="Type Ticker / Asset Name (e.g. XAUUSD, BTC, NAS100)..." autofocus>
+      <input type="text" id="bbSearch" class="bb-input" placeholder="Type Ticker / Asset Name..." autofocus>
     </div>
     <div class="bb-tabs" id="bbTabs">
       <button class="bb-tab on" data-cat="all">[F1: ALL]</button>
@@ -412,19 +454,19 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
   </div>
 </div>
 
-<!-- ===== Indicators Modal ===== -->
+<!-- Modal: Indicators -->
 <div class="modal" id="modalInd" hidden>
   <div class="mbox">
     <div class="mhead"><span id="indTitle">Indicators</span><button class="btn" data-close>✕</button></div>
     <div class="mbody">
       <div><h5>Add Indicator (Built-in &amp; MT5 Suite)</h5><div class="chips" id="indAvail"></div>
-        <p class="muted" style="margin-top:14px">Replay reveals indicator values only for completed candles with zero look-ahead bias.</p></div>
+        <p class="muted" style="margin-top:14px">When you add more than 3 indicators, they automatically transfer to the left dock to keep the chart clean.</p></div>
       <div><h5>On chart</h5><button class="btn" id="btnCopyInd2" style="margin-bottom:8px">⇉ Apply all A → B</button><div id="indActive"></div></div>
     </div>
   </div>
 </div>
 
-<!-- ===== Script Modal ===== -->
+<!-- Modal: Script -->
 <div class="modal" id="modalScript" hidden>
   <div class="mbox">
     <div class="mhead"><span id="scTitle">Script indicators (JavaScript)</span><button class="btn" data-close>✕</button></div>
@@ -446,13 +488,6 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <div>
         <h5>Saved scripts</h5>
         <div id="scList" style="margin-bottom:12px"></div>
-        <h5>How to write a script</h5>
-<pre class="doc">// Available arrays (1 per candle):
-// time open high low close volume hl2 hlc3 ohlc4 n
-// Helpers: ta.sma ta.ema ta.rma ta.atr ta.rsi ta.macd ta.bb ta.stoch ta.supertrend
-// indicator({ name:'My script', overlay:true })
-// plot(array, { title, color, lineWidth, style:'line'|'histogram' })
-// signal(boolArray, { position:'belowBar'|'aboveBar', shape:'arrowUp'|'arrowDown', color, text })</pre>
       </div>
     </div>
   </div>
@@ -623,16 +658,6 @@ const ta = {
       if (dir === 1) up[i] = flb; else down[i] = fub;
     }
     return { up, down };
-  },
-  crossover(a, b) {
-    const n = Array.isArray(a) ? a.length : b.length, out = new Array(n).fill(false);
-    for (let i = 1; i < n; i++) { const a0 = atv(a, i - 1), a1 = atv(a, i), b0 = atv(b, i - 1), b1 = atv(b, i); out[i] = isF(a0) && isF(a1) && isF(b0) && isF(b1) && a1 > b1 && a0 <= b0; }
-    return out;
-  },
-  crossunder(a, b) {
-    const n = Array.isArray(a) ? a.length : b.length, out = new Array(n).fill(false);
-    for (let i = 1; i < n; i++) { const a0 = atv(a, i - 1), a1 = atv(a, i), b0 = atv(b, i - 1), b1 = atv(b, i); out[i] = isF(a0) && isF(a1) && isF(b0) && isF(b1) && a1 < b1 && a0 >= b0; }
-    return out;
   }
 };
 
@@ -691,20 +716,9 @@ const BUILTIN = {
     run: (c, p) => { const s = ta.supertrend(c.high, c.low, c.close, p.len, p.mult); return { overlay: true, plots: [line('ST up', s.up, '#00e5a0', 2), line('ST down', s.down, '#ff3d71', 2)] }; } }
 };
 
-// Auto-merge extra external indicators from extra-indicators.js
 if (window.TFX_EXTRA_INDICATORS) {
   Object.assign(BUILTIN, window.TFX_EXTRA_INDICATORS);
 }
-
-const TEMPLATES = {
-  'EMA Cross': `indicator({ name: 'EMA Cross', overlay: true });
-const fast = ta.ema(close, 9);
-const slow = ta.ema(close, 21);
-plot(fast, { title: 'Fast EMA', color: '#00f0ff' });
-plot(slow, { title: 'Slow EMA', color: '#ff2bd6' });
-signal(ta.crossover(fast, slow),  { position: 'belowBar', shape: 'arrowUp',   color: '#00e5a0', text: 'BUY'  });
-signal(ta.crossunder(fast, slow), { position: 'aboveBar', shape: 'arrowDown', color: '#ff3d71', text: 'SELL' });`
-};
 //#PURE_END
 
 /* =====================================================================
@@ -745,10 +759,10 @@ const fmtDT = t => { const d = new Date(t * 1000); return `${d.getFullYear()}-${
 const signed = n => (n >= 0 ? '+' : '') + fmtMoney(n);
 const priceDecimals = p => p >= 1000 ? 2 : p >= 20 ? 2 : p >= 10 ? 3 : p >= 1 ? 5 : 6;
 
-const S = Object.assign({ symbol: 'XAUUSD', tf: '15m', range: 'year', source: 'auto', speed: '2', broker: 'XM', spreadOn: true, layout: 'single' }, store.get('tfx_settings', {}));
+const S = Object.assign({ symbol: 'XAUUSD', tf: '15m', range: 'year', source: 'auto', speed: '2', broker: 'XM', spreadOn: true, layout: 'single', dockInd: false, dockWidth: 330 }, store.get('tfx_settings', {}));
 S.replayOn = true; S.prec = 2;
 if (!TF[S.tf]) S.tf = '15m'; if (!TF[S.tf2]) S.tf2 = S.tf;
-const saveSettings = () => store.set('tfx_settings', { symbol: S.symbol, tf: V1.tf, tf2: V2.tf, range: S.range, source: S.source, speed: S.speed, broker: S.broker, spreadOn: S.spreadOn, layout: S.layout });
+const saveSettings = () => store.set('tfx_settings', { symbol: S.symbol, tf: V1.tf, tf2: V2.tf, range: S.range, source: S.source, speed: S.speed, broker: S.broker, spreadOn: S.spreadOn, layout: S.layout, dockInd: S.dockInd, dockWidth: S.dockWidth });
 
 const R = { i: 0, k: 0, N: 8, ph: 0, pl: 0, playing: false, timer: null, speed: S.speed === 'real' ? 'real' : (+S.speed || 2) };
 const Pz = { last: 0, bid: 0, ask: 0, spread: 0, time: 0 };
@@ -773,7 +787,7 @@ const IDB = {
     if (this.db) return this.db;
     return new Promise(resolve => {
       try {
-        const req = indexedDB.open('TributoFxDB_v3', 1);
+        const req = indexedDB.open('TributoFxDB_v4', 1);
         req.onupgradeneeded = e => {
           const db = e.target.result;
           if (!db.objectStoreNames.contains('candles')) db.createObjectStore('candles');
@@ -826,7 +840,7 @@ function updateBidAsk(lastPrice) {
 }
 
 /* =====================================================================
-   DUAL CHART CONSTRUCTORS
+   CHART SETUP
    ===================================================================== */
 const tickFmt = (t, type) => {
   const d = new Date(t * 1000);
@@ -893,7 +907,7 @@ function zoomChart(factor) {
 $('chartWrap').addEventListener('wheel', e => { if (e.ctrlKey) e.preventDefault(); }, { passive: false });
 
 /* =====================================================================
-   DATA FETCHING ENGINE (BINANCE EDGE + BYBIT + INSTITUTIONAL)
+   DATA FETCHING ENGINE
    ===================================================================== */
 function toApiSymbol(sym) {
   if (sym === 'XAUUSD' || sym === 'GOLD') return 'PAXGUSDT';
@@ -1095,7 +1109,7 @@ async function loadData(tf, forceRefresh = false) {
     const stored = await IDB.get(key);
     if (stored && stored.candles && stored.candles.length >= 20) {
       if (S.source !== 'demo' && (stored.source === 'demo' || !stored.source)) {
-        // Evict legacy demo
+        // Evict
       } else {
         dataCache.set(key, stored);
         return stored;
@@ -1167,21 +1181,250 @@ async function loadData(tf, forceRefresh = false) {
   return res;
 }
 
-/* ===== INDICATORS REBUILD ===== */
-const colsOf = cs => {
-  const n = cs.length, o = { time: new Array(n), open: new Array(n), high: new Array(n), low: new Array(n), close: new Array(n), volume: new Array(n) };
-  for (let i = 0; i < n; i++) { const c = cs[i]; o.time[i] = c.time; o.open[i] = c.open; o.high[i] = c.high; o.low[i] = c.low; o.close[i] = c.close; o.volume[i] = c.volume; }
-  return o;
-};
-function computeInd(v, ind) {
-  ind.error = null;
-  try {
-    if (!v.cols) { ind.spec = null; return; }
-    if (ind.type === 'script') ind.spec = runScript(ind.code, v.cols);
-    else { const d = BUILTIN[ind.type]; ind.spec = Object.assign({ markers: [], hlines: [] }, d.run(v.cols, ind.params)); }
-  } catch (e) { ind.spec = null; ind.error = e.message; }
+/* =====================================================================
+   LEFT SIDE DOCK SECTION (CLEAN CHART ENGINE & ALIGNED CROSSHAIR)
+   ===================================================================== */
+let dockedIndicators = [];
+
+function isDockActive() {
+  const bottomCount = V1.IND.filter(i => i.spec && !i.spec.overlay).length;
+  return S.dockInd || bottomCount > 3;
 }
-const indTitle = ind => ind.type === 'script' ? (ind.spec?.name || ind.name || 'Script') : BUILTIN[ind.type].name;
+
+function updateDockVisibility() {
+  const active = isDockActive();
+  const main = $('mainLayout');
+  const dock = $('indDock');
+  const btn = $('btnToggleDock');
+  
+  if (active) {
+    main.classList.add('has-dock');
+    main.style.setProperty('--ind-dock-w', (S.dockWidth || 330) + 'px');
+    dock.style.display = 'flex';
+    if (btn) btn.classList.add('on');
+  } else {
+    main.classList.remove('has-dock');
+    dock.style.display = 'none';
+    if (btn) btn.classList.remove('on');
+  }
+}
+
+function destroyDockedIndicators() {
+  dockedIndicators.forEach(d => {
+    try { d.chart.remove(); } catch {}
+  });
+  dockedIndicators = [];
+  $('indDockList').innerHTML = '';
+  $('dockCountBadge').textContent = '0';
+}
+
+function buildDockedIndicators() {
+  destroyDockedIndicators();
+  const listEl = $('indDockList');
+  const bottomInds = V1.IND.filter(i => i.spec && !i.spec.overlay);
+  $('dockCountBadge').textContent = String(bottomInds.length);
+
+  bottomInds.forEach((ind, idx) => {
+    const card = document.createElement('div');
+    card.className = 'ind-card';
+    card.style.height = (ind.dockHeight || 140) + 'px';
+
+    const head = document.createElement('div');
+    head.className = 'ind-card-head';
+    
+    const titleEl = document.createElement('span');
+    titleEl.className = 'ind-card-title';
+    titleEl.innerHTML = `<span>${indTitle(ind)}</span>`;
+    
+    const valEl = document.createElement('span');
+    valEl.className = 'ind-card-val';
+    valEl.textContent = '–';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'x';
+    closeBtn.textContent = '✕';
+    closeBtn.title = 'Remove indicator';
+    closeBtn.onclick = (e) => {
+      e.stopPropagation();
+      const realIdx = V1.IND.indexOf(ind);
+      if (realIdx >= 0) {
+        V1.IND.splice(realIdx, 1);
+        applyIndChange(V1);
+      }
+    };
+
+    const rightWrap = document.createElement('div');
+    rightWrap.style.display = 'flex';
+    rightWrap.style.alignItems = 'center';
+    rightWrap.style.gap = '8px';
+    rightWrap.append(valEl, closeBtn);
+
+    head.append(titleEl, rightWrap);
+
+    const body = document.createElement('div');
+    body.className = 'ind-card-body';
+    
+    const chartEl = document.createElement('div');
+    chartEl.className = 'ind-card-chart';
+    
+    const crossSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    crossSvg.setAttribute('class', 'ind-card-cross-svg');
+    
+    body.append(chartEl, crossSvg);
+
+    // Bottom vertical resizer handle
+    const resizer = document.createElement('div');
+    resizer.className = 'ind-card-resizer';
+    resizer.title = 'Drag up/down to adjust indicator height';
+
+    card.append(head, body, resizer);
+    listEl.append(card);
+
+    // Create synchronized Lightweight Chart instance for this indicator
+    const c = LW.createChart(chartEl, {
+      autoSize: true,
+      layout: { background: { type: LW.ColorType.Solid, color: '#10142a' }, textColor: '#7f89b3', fontFamily: 'Inter, system-ui, sans-serif' },
+      grid: { vertLines: { color: 'rgba(29,35,66,0.35)' }, horzLines: { color: 'rgba(29,35,66,0.35)' } },
+      crosshair: { mode: LW.CrosshairMode.Normal },
+      rightPriceScale: { borderColor: '#1d2342', scaleMargins: { top: 0.1, bottom: 0.1 } },
+      timeScale: { visible: false, borderColor: '#1d2342' },
+      handleScroll: false,
+      handleScale: false
+    });
+
+    const seriesList = [];
+    const prec = ind.spec.precision ?? 2;
+    const fmt = { type: 'price', precision: prec, minMove: Math.pow(10, -prec) };
+
+    ind.spec.plots.forEach((pl, pi) => {
+      const hist = pl.type === 'histogram';
+      const sr = c.addSeries(hist ? LW.HistogramSeries : LW.LineSeries,
+        hist ? { color: pl.color, priceLineVisible: false, lastValueVisible: false, priceFormat: fmt }
+             : { color: pl.color, lineWidth: pl.lineWidth || 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: fmt }
+      );
+      seriesList.push(sr);
+      if (pi === 0) (ind.spec.hlines || []).forEach(h => sr.createPriceLine({ price: h.price, color: h.color, lineWidth: 1, lineStyle: LW.LineStyle.Dashed, axisLabelVisible: false, title: h.title || '' }));
+    });
+
+    // Populate data
+    const n = visCount(V1);
+    seriesList.forEach((sr, i) => sr.setData(plotData(V1, ind.spec.plots[i], n)));
+
+    // Vertical drag-to-resize binding
+    let startY = 0, startH = 0;
+    const onMove = e => {
+      const newH = Math.max(80, Math.min(500, startH + (e.clientY - startY)));
+      card.style.height = newH + 'px';
+      ind.dockHeight = newH;
+      c.resize(card.clientWidth, newH - 34);
+    };
+    const onUp = () => {
+      resizer.classList.remove('dragging');
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+    resizer.addEventListener('pointerdown', e => {
+      startY = e.clientY;
+      startH = card.clientHeight;
+      resizer.classList.add('dragging');
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    });
+
+    dockedIndicators.push({ ind, card, chart: c, seriesList, valEl, crossSvg });
+  });
+
+  syncDockedChartsRange();
+}
+
+// Sync timeScale visible logical range across all docked indicators
+function syncDockedChartsRange() {
+  if (!dockedIndicators.length) return;
+  const r = V1.c.chart.timeScale().getVisibleLogicalRange();
+  if (!r) return;
+  dockedIndicators.forEach(d => {
+    try { d.chart.timeScale().setVisibleLogicalRange(r); } catch {}
+  });
+}
+
+// Synchronize crosshair position & aligned values across docked indicators
+function syncDockedCrosshair(time, logical) {
+  if (!dockedIndicators.length) return;
+  const cs = V1.candles, n = visCount(V1);
+  let idx = -1;
+  if (time) idx = bsearch(V1, time);
+  if (idx < 0 && logical != null) idx = Math.min(n - 1, Math.max(0, Math.round(logical)));
+
+  dockedIndicators.forEach(d => {
+    const svg = d.crossSvg;
+    svg.innerHTML = '';
+    
+    // Draw aligned vertical crosshair line inside left card
+    if (time != null || logical != null) {
+      let x = null;
+      if (time != null) x = d.chart.timeScale().timeToCoordinate(time);
+      if (x == null && logical != null) x = d.chart.timeScale().logicalToCoordinate(logical);
+      if (x != null && x >= 0 && x <= d.card.clientWidth) {
+        svg.innerHTML = `<line x1="${x}" y1="0" x2="${x}" y2="${d.card.clientHeight}" stroke="rgba(255,255,255,0.45)" stroke-width="1" stroke-dasharray="3 3"/>`;
+      }
+    }
+
+    // Update real-time formatted indicator value pill
+    if (idx >= 0 && idx < n && d.ind.spec) {
+      const vals = d.ind.spec.plots.map(pl => {
+        const v = pl.values[idx];
+        return isF(v) ? (Math.abs(v) >= 100 ? v.toFixed(2) : v.toFixed(4)) : '–';
+      });
+      d.valEl.textContent = vals.join('  ');
+    } else {
+      d.valEl.textContent = '–';
+    }
+  });
+}
+
+// Horizontal resizer binding (drag left dock width)
+(function initDockHResizer() {
+  const resizer = $('dockHResizer');
+  if (!resizer) return;
+  let startX = 0, startW = 0;
+  const onMove = e => {
+    const newW = Math.max(220, Math.min(650, startW + (e.clientX - startX)));
+    S.dockWidth = newW;
+    $('mainLayout').style.setProperty('--ind-dock-w', newW + 'px');
+    dockedIndicators.forEach(d => d.chart.resize(newW - 14, d.card.clientHeight - 34));
+    saveSettings();
+  };
+  const onUp = () => {
+    resizer.classList.remove('dragging');
+    window.removeEventListener('pointermove', onMove);
+    window.removeEventListener('pointerup', onUp);
+  };
+  resizer.addEventListener('pointerdown', e => {
+    startX = e.clientX;
+    startW = $('indDock').clientWidth;
+    resizer.classList.add('dragging');
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  });
+})();
+
+$('btnToggleDock').onclick = () => {
+  S.dockInd = !S.dockInd;
+  saveSettings();
+  applyIndChange(V1);
+  toast(S.dockInd ? 'Indicator Left Dock Enabled' : 'Indicators Restored to Bottom');
+};
+
+$('btnCloseDock').onclick = () => {
+  S.dockInd = false;
+  saveSettings();
+  applyIndChange(V1);
+  toast('Dock closed — Indicators restored to bottom');
+};
+
+/* =====================================================================
+   INDICATORS SERIES REBUILD & DOCK INTEGRATION
+   ===================================================================== */
 const saveInds = () => {
   const ser = v => v.IND.map(i => ({ type: i.type, params: i.params, code: i.code, name: i.name }));
   store.set('tfx_inds', ser(V1)); store.set('tfx_inds2', ser(V2));
@@ -1198,28 +1441,51 @@ function getSeriesForPane(v, paneIndex) {
   for (const ind of v.IND) if (ind.paneIndex === paneIndex && ind.series && ind.series.length > 0) return ind.series[0];
   return v.c.candleSeries;
 }
+
 function rebuildIndicatorSeries(v) {
   removeDrawingObjs(v);
   for (const ind of v.IND) { for (const sr of ind.series || []) { try { v.c.chart.removeSeries(sr); } catch { /* ignore */ } } ind.series = []; ind.paneIndex = 0; }
-  let pane = 1;
-  for (const ind of v.IND) {
-    if (!ind.spec) continue;
-    if (v.hidden && !ind.spec.overlay) continue;
-    const pIdx = ind.spec.overlay ? 0 : pane++;
-    ind.paneIndex = pIdx;
-    const prec = ind.spec.precision ?? S.prec, fmt = { type: 'price', precision: prec, minMove: Math.pow(10, -prec) };
-    ind.spec.plots.forEach((pl, pi) => {
-      const hist = pl.type === 'histogram';
-      const sr = v.c.chart.addSeries(hist ? LW.HistogramSeries : LW.LineSeries,
-        hist ? { color: pl.color, priceLineVisible: false, lastValueVisible: false, priceFormat: fmt }
-             : { color: pl.color, lineWidth: pl.lineWidth || 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: fmt }, pIdx);
-      ind.series.push(sr);
-      if (pi === 0) (ind.spec.hlines || []).forEach(h => sr.createPriceLine({ price: h.price, color: h.color, lineWidth: 1, lineStyle: LW.LineStyle.Dashed, axisLabelVisible: false, title: h.title || '' }));
-    });
+
+  const dockActive = isDockActive();
+  updateDockVisibility();
+
+  if (dockActive) {
+    // Dock is active: Keep only overlay indicators on main chart. Bottom indicators are docked to left.
+    for (const ind of v.IND) {
+      if (!ind.spec || !ind.spec.overlay) continue;
+      ind.paneIndex = 0;
+      const prec = ind.spec.precision ?? S.prec, fmt = { type: 'price', precision: prec, minMove: Math.pow(10, -prec) };
+      ind.spec.plots.forEach(pl => {
+        const sr = v.c.chart.addSeries(LW.LineSeries, { color: pl.color, lineWidth: pl.lineWidth || 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: fmt }, 0);
+        ind.series.push(sr);
+      });
+    }
+    buildDockedIndicators();
+  } else {
+    // Normal bottom panes
+    destroyDockedIndicators();
+    let pane = 1;
+    for (const ind of v.IND) {
+      if (!ind.spec) continue;
+      if (v.hidden && !ind.spec.overlay) continue;
+      const pIdx = ind.spec.overlay ? 0 : pane++;
+      ind.paneIndex = pIdx;
+      const prec = ind.spec.precision ?? S.prec, fmt = { type: 'price', precision: prec, minMove: Math.pow(10, -prec) };
+      ind.spec.plots.forEach((pl, pi) => {
+        const hist = pl.type === 'histogram';
+        const sr = v.c.chart.addSeries(hist ? LW.HistogramSeries : LW.LineSeries,
+          hist ? { color: pl.color, priceLineVisible: false, lastValueVisible: false, priceFormat: fmt }
+               : { color: pl.color, lineWidth: pl.lineWidth || 2, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false, priceFormat: fmt }, pIdx);
+        ind.series.push(sr);
+        if (pi === 0) (ind.spec.hlines || []).forEach(h => sr.createPriceLine({ price: h.price, color: h.color, lineWidth: 1, lineStyle: LW.LineStyle.Dashed, axisLabelVisible: false, title: h.title || '' }));
+      });
+    }
+    setTimeout(() => sizePanes(v), 0);
   }
+
   rebuildDrawingSeries(v);
-  setTimeout(() => sizePanes(v), 0);
 }
+
 function sizePanes(v) {
   if (!v) { viewsNeeded().forEach(sizePanes); return; }
   try {
@@ -1229,9 +1495,15 @@ function sizePanes(v) {
     ps[0].setHeight(Math.max(160, total - sub * (ps.length - 1)));
   } catch { /* ignore */ }
 }
+
 function fillIndicatorData(v) {
   const n = visCount(v);
   for (const ind of v.IND) ind.series?.forEach((sr, i) => sr.setData(plotData(v, ind.spec.plots[i], n)));
+  if (isDockActive()) {
+    dockedIndicators.forEach(d => {
+      d.seriesList.forEach((sr, i) => sr.setData(plotData(v, d.ind.spec.plots[i], n)));
+    });
+  }
 }
 
 let markersDirty = true;
@@ -1253,6 +1525,7 @@ function refreshMarkers(force = false) {
     v.c.markersApi.setMarkers(out);
   }
 }
+
 function toggleBottomIndicators(v) {
   if (!v.IND.some(ind => ind.spec && !ind.spec.overlay) && !v.hidden) return;
   v.hidden = !v.hidden; rebuildIndicatorSeries(v); renderAll();
@@ -1261,7 +1534,9 @@ function toggleBottomIndicators(v) {
 let lastDblTime = 0;
 VIEWS.forEach(v => $(v.elId).addEventListener('dblclick', () => { const now = Date.now(); if (now - lastDblTime < 350) return; lastDblTime = now; toggleBottomIndicators(v); }));
 
-/* ===== RENDER ENGINE ===== */
+/* =====================================================================
+   RENDER ENGINE & CROSSHAIR SYNC
+   ===================================================================== */
 function replayCursor() {
   const m = master(), cs = m.candles;
   if (R.i >= cs.length) return cs.length ? cs[cs.length - 1].time + m.tfSec : 0;
@@ -1316,6 +1591,7 @@ function renderAll() {
   refreshMarkers(true); syncPriceLines();
   for (const v of viewsNeeded()) updateLegend(v, null);
   updateAll(); redrawRulers();
+  syncDockedChartsRange();
 }
 
 function advanceSlave(v) {
@@ -1329,7 +1605,9 @@ function advanceSlave(v) {
   if (v.form) { v.c.candleSeries.update(candleBar(v.form)); v.c.volSeries.update(volBar(v.form, v.form.volume)); }
 }
 
-/* ===== REPLAY LOOP ===== */
+/* =====================================================================
+   REPLAY LOOP
+   ===================================================================== */
 const pickN = () => {
   if (S.speed === 'real') { const sec = master().tfSec || 60; return sec <= 60 ? sec : Math.min(120, Math.max(20, Math.round(sec / 5))); }
   const sp = +S.speed || 2;
@@ -1360,6 +1638,11 @@ function tickFrame() {
   if (R.k >= R.N) {
     const j = R.i; R.i++; R.k = 0;
     for (const ind of m.IND) ind.series?.forEach((sr, i) => sr.update(plotPoint(m, ind.spec.plots[i], j)));
+    if (isDockActive()) {
+      dockedIndicators.forEach(d => {
+        d.seriesList.forEach((sr, i) => sr.update(plotPoint(m, d.ind.spec.plots[i], j)));
+      });
+    }
     markersDirty = true;
   }
   m.done = R.i; m.form = R.k > 0 ? part : null;
@@ -1416,7 +1699,9 @@ function positionAt(cursorEnd) {
 }
 function showAll() { pause(); renderAll(); VIEWS.forEach(v => v.c.chart.timeScale().fitContent()); }
 
-/* ===== TRADING OPERATIONS ===== */
+/* =====================================================================
+   TRADING ENGINE & UNREALIZED P/L
+   ===================================================================== */
 const feePct = () => Math.max(0, parseFloat($('ordFee').value) || 0);
 const levX = () => Math.max(1, parseFloat($('ordLev').value) || 1);
 const dirOf = p => p.side === 'long' ? 1 : -1;
@@ -1629,7 +1914,7 @@ function renderHistory() {
     kv('Avg win', wins.length ? signed(gw / wins.length) : '-', 'up'), kv('Avg loss', losses.length ? signed(-gl / losses.length) : '-', 'dn'));
   const body = $('histBody'); body.innerHTML = '';
   if (!h.length) body.append(el('tr', {}, el('td', { colspan: '5', class: 'muted' }, 'No closed trades yet')));
-  h.slice(0, 100).forEach(t => body.append(el('tr', {}, el('td', { class: t.side === 'long' ? 'up' : 'dn', title: t.symbol + '  ' + fmtDT(t.openTime) + ' → ' + fmtDT(t.closeTime) }, t.side === 'long' ? 'LONG' : 'SHORT'),
+  h.slice(0, 100).forEach(t => body.append(el('tr', {}, el('td', { class: t.side === 'long' ? 'up' : 'dn' }, t.side === 'long' ? 'LONG' : 'SHORT'),
     el('td', {}, (+t.entry.toPrecision(7)).toString()), el('td', {}, (+t.exit.toPrecision(7)).toString()),
     el('td', { class: t.pnl >= 0 ? 'up' : 'dn' }, signed(t.pnl)), el('td', { class: 'muted' }, t.reason))));
 }
@@ -1647,7 +1932,10 @@ function updateLegend(v, param) {
   const up = bar.close >= bar.open, cls = up ? 'up' : 'dn', chg = bar.open ? (bar.close - bar.open) / bar.open * 100 : 0;
   const tag = S.layout === 'single' ? '' : `<b style="color:var(--cyan)">[${v.n === 1 ? 'A' : 'B'}]</b> `;
   let html = `<div class="ohlc">${tag}<b>${S.symbol}</b> · ${v.tf} <span>O <i class="${cls}">${fmtP(bar.open)}</i></span><span>H <i class="${cls}">${fmtP(bar.high)}</i></span><span>L <i class="${cls}">${fmtP(bar.low)}</i></span><span>C <i class="${cls}">${fmtP(bar.close)}</i></span><span class="${cls}">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span></div><div class="inds">`;
-  for (const ind of v.IND) {
+  
+  // Show only active overlay indicators on main legend if dock is active
+  const visibleInds = isDockActive() ? v.IND.filter(i => i.spec && i.spec.overlay) : v.IND;
+  for (const ind of visibleInds) {
     if (!ind.spec || (v.hidden && !ind.spec.overlay)) continue;
     const vals = ind.spec.plots.filter(pl => pl.type === 'line' || ind.spec.plots.length <= 2).map(pl => {
       const val = idx >= 0 && idx < n ? pl.values[idx] : NaN;
@@ -1657,12 +1945,25 @@ function updateLegend(v, param) {
   }
   box.innerHTML = html + '</div>';
 }
+
+// Subscribe Crosshair Move on Main Charts & Propagate to Left Indicator Dock
 VIEWS.forEach(v => v.c.chart.subscribeCrosshairMove(p => {
   v.pendingParam = p;
   if (v.legRaf) return;
   v.legRaf = true;
-  requestAnimationFrame(() => { v.legRaf = false; updateLegend(v, v.pendingParam); });
+  requestAnimationFrame(() => {
+    v.legRaf = false;
+    updateLegend(v, v.pendingParam);
+    if (v === V1 && isDockActive()) {
+      syncDockedCrosshair(v.pendingParam?.time, v.pendingParam?.logical);
+    }
+  });
 }));
+
+// Sync visible range to docked indicators when user pans or zooms
+V1.c.chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+  if (isDockActive()) syncDockedChartsRange();
+});
 
 function updateStatus() {
   if (dom.stData) {
@@ -1672,7 +1973,7 @@ function updateStatus() {
   if (dom.stSrc) dom.stSrc.innerHTML = viewsNeeded().some(v => v.srcUsed === 'demo') ? '<span class="badge demo">DEMO DATA</span>' : `<span class="badge">${V1.srcUsed || 'BINANCE'}</span>`;
 }
 
-/* ===== DRAWING TOOLS & RULER ===== */
+/* ===== DRAWINGS & RULER ===== */
 let tool = 'cursor', pending = null, dotOwner = 0;
 function setTool(t) {
   tool = t; pending = null;
@@ -1682,7 +1983,7 @@ function setTool(t) {
   $('toolTrend').classList.toggle('on', t === 'trend');
   $('toolRuler').classList.toggle('on', t === 'ruler');
   $('drawDot').style.display = 'none';
-  if (t === 'h') toast('Click on any chart to draw horizontal line');
+  if (t === 'h') toast('Click on chart to draw horizontal line');
   if (t === 'trend') toast('Click Point A, then Point B to draw trendline');
   if (t === 'ruler') toast('Click Point A, move mouse to measure, click Point B to fix');
 }
@@ -1765,7 +2066,12 @@ VIEWS.forEach(v => {
   $(v.paneId).addEventListener('wheel', () => { if (v.ruler) requestAnimationFrame(() => drawRuler(v)); }, { passive: true });
   v.c.chart.subscribeClick(p => handleDrawingClick(p, v));
 });
-window.addEventListener('resize', () => setTimeout(redrawRulers, 80));
+window.addEventListener('resize', () => {
+  setTimeout(() => {
+    redrawRulers();
+    if (isDockActive()) syncDockedChartsRange();
+  }, 80);
+});
 
 function handleDrawingClick(p, v) {
   if (tool === 'cursor' || !p.point) return;
@@ -1796,237 +2102,10 @@ function clearDrawings() {
   toast('All drawings removed');
 }
 
-/* ===== INSTRUMENT PICKER WIRING ===== */
-let bbSelectedIdx = 0;
-let currentCat = 'all';
-
-function renderBloombergList() {
-  const query = $('bbSearch').value.trim().toUpperCase();
-  const listEl = $('bbList');
-  listEl.innerHTML = '';
-
-  const filtered = INSTRUMENTS.filter(it => {
-    const matchCat = currentCat === 'all' || it.cat === currentCat;
-    const matchQuery = !query || it.sym.includes(query) || it.name.toUpperCase().includes(query);
-    return matchCat && matchQuery;
-  });
-
-  $('bbCount').textContent = `${filtered.length} Instruments`;
-
-  if (!filtered.length) {
-    listEl.append(el('div', { style: 'padding:20px;color:#ff9900;text-align:center' }, 'NO INSTRUMENT FOUND'));
-    return;
-  }
-
-  if (bbSelectedIdx >= filtered.length) bbSelectedIdx = 0;
-
-  filtered.forEach((it, idx) => {
-    const item = el('div', {
-      class: `bb-item ${idx === bbSelectedIdx ? 'active' : ''}`,
-      onclick: () => selectInstrument(it.sym)
-    },
-      el('div', { class: 'bb-sym' }, it.sym),
-      el('div', { class: 'bb-name' }, it.name),
-      el('div', { class: 'bb-cat' }, it.cat),
-      el('div', { class: 'bb-tag' }, it.tag)
-    );
-    listEl.append(item);
-  });
-}
-
-function selectInstrument(sym) {
-  closeBloombergModal();
-  if (sym === S.symbol) return;
-  if (A.positions.length) { toast('Close open positions before changing symbol'); return; }
-  clearDrawings();
-  S.symbol = sym;
-  $('symInput').value = sym;
-  saveSettings();
-  reload(null, false);
-}
-
-function openBloombergModal() {
-  $('bbModal').hidden = false;
-  $('bbSearch').value = '';
-  bbSelectedIdx = 0;
-  renderBloombergList();
-  setTimeout(() => $('bbSearch').focus(), 50);
-}
-
-function closeBloombergModal() { $('bbModal').hidden = true; }
-
-$('symInput').addEventListener('click', openBloombergModal);
-$('bbClose').addEventListener('click', closeBloombergModal);
-$('bbModal').addEventListener('click', e => { if (e.target === $('bbModal')) closeBloombergModal(); });
-
-document.querySelectorAll('#bbTabs .bb-tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('#bbTabs .bb-tab').forEach(t => t.classList.remove('on'));
-    tab.classList.add('on');
-    currentCat = tab.dataset.cat;
-    bbSelectedIdx = 0;
-    renderBloombergList();
-  });
-});
-
-$('bbSearch').addEventListener('input', () => {
-  bbSelectedIdx = 0;
-  renderBloombergList();
-});
-
-$('bbSearch').addEventListener('keydown', e => {
-  const items = document.querySelectorAll('.bb-item');
-  if (e.key === 'ArrowDown') {
-    e.preventDefault();
-    if (items.length) {
-      bbSelectedIdx = (bbSelectedIdx + 1) % items.length;
-      renderBloombergList();
-      const activeEl = document.querySelector('.bb-item.active');
-      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
-    }
-  } else if (e.key === 'ArrowUp') {
-    e.preventDefault();
-    if (items.length) {
-      bbSelectedIdx = (bbSelectedIdx - 1 + items.length) % items.length;
-      renderBloombergList();
-      const activeEl = document.querySelector('.bb-item.active');
-      if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
-    }
-  } else if (e.key === 'Enter') {
-    e.preventDefault();
-    const activeEl = document.querySelector('.bb-item.active');
-    if (activeEl) {
-      selectInstrument(activeEl.querySelector('.bb-sym').textContent);
-    } else if ($('bbSearch').value.trim()) {
-      selectInstrument($('bbSearch').value.trim().toUpperCase());
-    }
-  } else if (e.key === 'Escape') {
-    closeBloombergModal();
-  }
-});
-
-/* ===== LAYOUT & SPLIT VIEW ===== */
-function setActive(n) {
-  activeChartIndex = n;
-  $('paneChart1').classList.toggle('active-pane', n === 1);
-  $('paneChart2').classList.toggle('active-pane', n === 2);
-  markTf();
-  if (scriptEditIdx !== null) { scriptEditIdx = null; $('scAdd').textContent = 'Add to chart'; }
-  if (!$('modalInd').hidden) renderIndModal();
-}
-function setLayoutMode(mode, noLoad) {
-  const prev = S.layout, cur = noLoad ? null : currentCursor();
-  if (!noLoad && prev === 'single' && mode !== 'single') { V2.tf = V1.tf; V2.tfSec = V1.tfSec; }
-  S.layout = mode;
-  saveSettings();
-  $('layoutSel').value = mode;
-  const wrap = $('chartWrap');
-  wrap.classList.remove('split-horz', 'split-vert');
-  if (mode === 'single') { $('paneChart2').style.display = 'none'; setActive(1); }
-  else { $('paneChart2').style.display = 'block'; wrap.classList.add(mode === 'horz' ? 'split-horz' : 'split-vert'); markTf(); }
-  if (!noLoad) {
-    if (mode !== 'single' && V2.key !== keyOf(V2)) reload(cur, false, [V2]);
-    else if (!S.replayOn) showAll();
-    else if (cur != null) positionAt(cur);
-  }
-  setTimeout(() => { sizePanes(); redrawRulers(); }, 60);
-}
-$('layoutSel').addEventListener('change', () => setLayoutMode($('layoutSel').value));
-$('paneChart1').addEventListener('pointerdown', () => setActive(1), true);
-$('paneChart2').addEventListener('pointerdown', () => setActive(2), true);
-
-/* ===== INDICATORS MODAL WIRING ===== */
-function openModal(id) { $(id).hidden = false; }
-document.querySelectorAll('.modal').forEach(m => {
-  m.addEventListener('click', e => { if (e.target === m || e.target.hasAttribute('data-close')) m.hidden = true; });
-});
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { document.querySelectorAll('.modal').forEach(m => m.hidden = true); if (tool !== 'cursor') setTool('cursor'); } });
-
-function applyIndChange(v = AV()) { rebuildIndicatorSeries(v); renderAll(); saveInds(); }
-function addBuiltin(type) {
-  const v = AV(), params = {}; BUILTIN[type].params.forEach(p => params[p.k] = p.d);
-  const ind = { type, params, series: [] }; computeInd(v, ind); v.IND.push(ind); applyIndChange(v); renderIndModal();
-}
-function copyIndAtoB() {
-  if (S.layout === 'single') { toast('Open split-screen layout first'); return; }
-  V2.IND.forEach(ind => ind.series?.forEach(sr => { try { V2.c.chart.removeSeries(sr); } catch { /* ignore */ } }));
-  V2.IND = V1.IND.map(i => ({ type: i.type, params: JSON.parse(JSON.stringify(i.params || {})), code: i.code, name: i.name, series: [] }));
-  V2.IND.forEach(i => computeInd(V2, i));
-  applyIndChange(V2); if (!$('modalInd').hidden) renderIndModal();
-  toast('Indicators copied: Chart A → Chart B');
-}
-let scriptEditView = null;
-function renderIndModal() {
-  const v = AV();
-  $('indTitle').textContent = `Indicators — Chart ${v.n === 1 ? 'A' : 'B'} (${v.tf})`;
-  const av = $('indAvail'); av.innerHTML = '';
-  for (const [type, d] of Object.entries(BUILTIN)) av.append(el('button', { class: 'chip', onclick: () => addBuiltin(type) }, '+ ' + d.name));
-  const ac = $('indActive'); ac.innerHTML = '';
-  if (!v.IND.length) ac.append(el('div', { class: 'muted' }, 'No indicators yet.'));
-  v.IND.forEach((ind, idx) => {
-    const ps = el('div', { class: 'ps' });
-    if (ind.type !== 'script') BUILTIN[ind.type].params.forEach(p => {
-      const inp = el('input', { type: p.t === 'color' ? 'color' : 'number', value: ind.params[p.k] });
-      if (p.t === 'num') { inp.min = p.min ?? 1; inp.step = p.step ?? 1; }
-      inp.addEventListener('change', () => { ind.params[p.k] = p.t === 'color' ? inp.value : (parseFloat(inp.value) || p.d); computeInd(v, ind); applyIndChange(v); renderIndModal(); });
-      ps.append(el('label', {}, p.l, inp));
-    });
-    const head = el('div', { class: 't' }, el('span', {}, (ind.type === 'script' ? '{ } ' : '') + indTitle(ind)),
-      el('span', {},
-        ind.type === 'script' ? el('button', { class: 'btn', style: 'margin-right:6px', onclick: () => { loadScriptToEditor(ind.name || indTitle(ind), ind.code, idx); scriptEditView = v; openModal('modalScript'); } }, 'Edit') : '',
-        el('button', { class: 'x', onclick: () => { v.IND.splice(idx, 1); applyIndChange(v); renderIndModal(); } }, 'Remove')));
-    ac.append(el('div', { class: 'arow' }, head, ps, ind.error ? el('div', { class: 'err' }, ind.error) : ''));
-  });
-}
-$('btnInd').onclick = () => { renderIndModal(); openModal('modalInd'); };
-$('btnCopyInd').onclick = copyIndAtoB;
-$('btnCopyInd2').onclick = copyIndAtoB;
-
-let scriptEditIdx = null;
-const savedScripts = () => store.get('tfx_scripts', []);
-function loadScriptToEditor(name, code, editIdx = null) {
-  $('scName').value = name || ''; $('scCode').value = code || ''; $('scErr').textContent = ''; scriptEditIdx = editIdx;
-  $('scAdd').textContent = editIdx === null ? 'Add to chart' : 'Update on chart';
-}
-function renderScriptList() {
-  const l = $('scList'); l.innerHTML = ''; const arr = savedScripts();
-  if (!arr.length) l.append(el('div', { class: 'muted' }, 'Nothing saved yet.'));
-  arr.forEach((s, i) => l.append(el('div', { class: 'arow' }, el('div', { class: 't' }, el('span', {}, s.name),
-    el('span', {}, el('button', { class: 'btn', style: 'margin-right:6px', onclick: () => loadScriptToEditor(s.name, s.code) }, 'Load'),
-      el('button', { class: 'x', onclick: () => { const a = savedScripts(); a.splice(i, 1); store.set('tfx_scripts', a); renderScriptList(); } }, 'Delete'))))));
-}
-$('btnScript').onclick = () => { renderScriptList(); $('scTitle').textContent = 'Script indicators (JavaScript) — Chart ' + (AV().n === 1 ? 'A' : 'B'); openModal('modalScript'); };
-const tplSel = $('tplSel');
-tplSel.append(el('option', { value: '' }, 'Load template…'));
-Object.keys(TEMPLATES).forEach(k => tplSel.append(el('option', { value: k }, k)));
-tplSel.onchange = () => { if (tplSel.value) loadScriptToEditor(tplSel.value, TEMPLATES[tplSel.value]); tplSel.value = ''; };
-$('scNew').onclick = () => loadScriptToEditor('', '');
-$('scSave').onclick = () => {
-  const name = $('scName').value.trim() || 'My script', code = $('scCode').value, arr = savedScripts(), i = arr.findIndex(s => s.name === name);
-  if (i >= 0) arr[i] = { name, code }; else arr.push({ name, code });
-  store.set('tfx_scripts', arr); renderScriptList(); toast('Saved');
-};
-$('scAdd').onclick = () => {
-  const name = $('scName').value.trim() || 'My script', code = $('scCode').value;
-  const v = (scriptEditIdx !== null && scriptEditView) ? scriptEditView : AV();
-  const test = { type: 'script', code, name, series: [] }; computeInd(v, test);
-  if (test.error) { $('scErr').textContent = 'Error: ' + test.error; return; }
-  $('scErr').textContent = '';
-  if (scriptEditIdx !== null && v.IND[scriptEditIdx]) Object.assign(v.IND[scriptEditIdx], { code, name, spec: test.spec, error: null });
-  else v.IND.push(test);
-  scriptEditIdx = null; scriptEditView = null; $('scAdd').textContent = 'Add to chart';
-  applyIndChange(v); toast('Script applied to Chart ' + (v.n === 1 ? 'A' : 'B'));
-};
-loadScriptToEditor('', TEMPLATES['EMA Cross']);
-$('scName').value = 'EMA Cross';
-
-/* =====================================================================
-   MAIN INTERFACE CONTROLS & TIMEFRAME SWITCHING
-   ===================================================================== */
+/* ===== CONTROL WIRING ===== */
 Object.keys(TF).forEach(tf => $('tfSeg').append(el('button', { 'data-tf': tf, class: tf === S.tf ? 'on' : '', onclick: () => changeTf(tf) }, tf)));
 const markTf = () => document.querySelectorAll('#tfSeg button').forEach(b => b.classList.toggle('on', b.dataset.tf === AV().tf));
 $('symInput').value = S.symbol; $('rangeSel').value = S.range; $('srcSel').value = S.source; $('speedSel').value = String(S.speed);
-
 $('repDate').value = '2026-01-01';
 $('chkSpread').checked = !!S.spreadOn;
 $('selBroker').value = S.broker || 'XM';
@@ -2037,7 +2116,7 @@ $('chkSpread').addEventListener('change', () => {
   updateBidAsk(Pz.last);
   syncPriceLines();
   updateAll();
-  toast(S.spreadOn ? `Spread ON (${S.broker})` : 'Spread OFF (Raw Zero)');
+  toast(S.spreadOn ? `Spread ON (${S.broker})` : 'Spread OFF');
 });
 
 $('selBroker').addEventListener('change', () => {
@@ -2046,7 +2125,7 @@ $('selBroker').addEventListener('change', () => {
   updateBidAsk(Pz.last);
   syncPriceLines();
   updateAll();
-  toast(`Broker profile: ${S.broker}`);
+  toast(`Broker: ${S.broker}`);
 });
 
 function setReplaySpeed(val) {
@@ -2075,7 +2154,7 @@ function showLoading(on, msg) {
 }
 
 async function reload(cursorEnd, forceRefresh = false, which = null) {
-  showLoading(true, `Loading full ${S.symbol} data from Jan 1, 2026...`);
+  showLoading(true, `Loading full ${S.symbol} data starting from Jan 1, 2026...`);
   try {
     const list = which || viewsNeeded();
     await Promise.all(list.map(async v => {
@@ -2094,9 +2173,7 @@ async function reload(cursorEnd, forceRefresh = false, which = null) {
       if (repDateEl) {
         repDateEl.min = firstDt;
         repDateEl.max = lastDt;
-        if (!repDateEl.value || repDateEl.value < firstDt || repDateEl.value > lastDt) {
-          repDateEl.value = firstDt;
-        }
+        if (!repDateEl.value || repDateEl.value < firstDt || repDateEl.value > lastDt) repDateEl.value = firstDt;
       }
     }
 
@@ -2123,12 +2200,7 @@ async function changeTf(tf) {
 
 $('rangeSel').onchange = async () => { S.range = $('rangeSel').value; saveSettings(); await reload(currentCursor(), false); };
 $('srcSel').onchange = async () => { S.source = $('srcSel').value; saveSettings(); await reload(currentCursor(), false); };
-
-$('btnUpdateData').onclick = async () => {
-  toast('Updating full market data...');
-  await reload(currentCursor(), true);
-  toast('Market data refreshed!');
-};
+$('btnUpdateData').onclick = async () => { toast('Updating full market data...'); await reload(currentCursor(), true); toast('Data updated!'); };
 
 $('replayChk').onchange = () => {
   S.replayOn = $('replayChk').checked; pause();
@@ -2165,17 +2237,14 @@ $('btnZoomReset').onclick = () => { C1.chart.timeScale().fitContent(); C2.chart.
 let sidePanelOpen = true;
 function toggleSidePanel() {
   sidePanelOpen = !sidePanelOpen;
-  document.querySelector('.main').classList.toggle('side-collapsed', !sidePanelOpen);
+  $('mainLayout').classList.toggle('side-collapsed', !sidePanelOpen);
   const topBtn = $('btnToggleSide');
   const fltBtn = $('btnSideToggleFloat');
   if (topBtn) topBtn.classList.toggle('on', sidePanelOpen);
-  if (fltBtn) {
-    fltBtn.textContent = sidePanelOpen ? '◨' : '◧';
-    fltBtn.title = sidePanelOpen ? 'Hide trading panel' : 'Show trading panel';
-  }
+  if (fltBtn) fltBtn.textContent = sidePanelOpen ? '◨' : '◧';
   setTimeout(() => {
     window.dispatchEvent(new Event('resize'));
-    sizePanes();
+    sizePanes(V1);
   }, 100);
 }
 $('btnToggleSide').onclick = toggleSidePanel;
@@ -2192,7 +2261,7 @@ $('btnBuy').onclick = () => openPosition('long');
 $('btnSell').onclick = () => openPosition('short');
 $('btnCloseAll').onclick = () => { if (A.positions.length) closeAll('Manual'); };
 $('btnReset').onclick = () => {
-  if (!confirm('Reset practice account and trade history?')) return;
+  if (!confirm('Reset practice account?')) return;
   A.positions = []; A.history = []; A.startBal = Math.max(100, parseFloat($('ordBal').value) || 10000); A.balance = A.startBal;
   saveAcct(); syncPriceLines(); refreshMarkers(true); renderPositions(); renderHistory(); updateAll();
 };
@@ -2208,17 +2277,19 @@ document.addEventListener('keydown', e => {
   else if (e.key === 's' || e.key === 'S') openPosition('short');
 });
 setInterval(() => { $('clockTxt').textContent = new Date().toLocaleString('en-GB', { hour12: false }); }, 1000);
-window.addEventListener('resize', () => setTimeout(sizePanes, 50));
 
 /* =====================================================================
-   BOOTSTRAP
+   STARTUP INITIALIZATION
    ===================================================================== */
 (function init() {
   initDomCache();
   setReplaySpeed(S.speed);
   setLayoutMode(S.layout || 'single', true);
   const saved = store.get('tfx_inds', null);
-  const defaults = saved ?? [{ type: 'ema', params: { len: 50, color: '#ffd43b' } }, { type: 'ema', params: { len: 200, color: '#00f0ff' } }, { type: 'rsi', params: { len: 14, color: '#b388ff' } }];
+  const defaults = saved ?? [
+    { type: 'ema', params: { len: 50, color: '#ffd43b' } },
+    { type: 'rsi', params: { len: 14, color: '#b388ff' } }
+  ];
   const okInd = d => d && (d.type === 'script' || BUILTIN[d.type]);
   const mapInd = d => ({ type: d.type, params: d.params || {}, code: d.code, name: d.name, series: [] });
   defaults.filter(okInd).forEach(d => V1.IND.push(mapInd(d)));
