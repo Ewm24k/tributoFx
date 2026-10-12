@@ -330,20 +330,20 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         <div id="tvEmbedWrap" style="display:none;position:absolute;inset:0;z-index:28;background:var(--bg);width:100%;height:100%;overflow:hidden">
           <div id="tvChartContainer" style="width:100%;height:100%;"></div>
           
-          <!-- Live Crosshair Tracker Layer for Dock Indicators Synchronization -->
-          <div id="tvCrossOverlay" style="position:absolute;inset:0;z-index:30;cursor:crosshair;pointer-events:auto">
+          <!-- Live Crosshair Tracker Layer: bounded to chart canvas area so top bar and left tools are NEVER blocked -->
+          <div id="tvCrossOverlay" style="position:absolute;top:38px;left:52px;right:60px;bottom:26px;z-index:30;cursor:crosshair;pointer-events:none;">
             <svg id="tvCrosshairSvg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;">
               <line id="tvCrossV" x1="0" y1="0" x2="0" y2="100%" stroke="rgba(215,221,245,0.7)" stroke-width="1" stroke-dasharray="3 3" style="display:none;"></line>
               <line id="tvCrossH" x1="0" y1="0" x2="100%" y2="0" stroke="rgba(215,221,245,0.7)" stroke-width="1" stroke-dasharray="3 3" style="display:none;"></line>
             </svg>
-            <div id="tvPriceBadge" style="display:none;position:absolute;right:0;transform:translateY(-50%);background:#151a35;border:1px solid #00f0ff;color:#00f0ff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;pointer-events:none;z-index:32;box-shadow:0 0 10px rgba(0,240,255,0.3)"></div>
+            <div id="tvPriceBadge" style="display:none;position:absolute;right:4px;transform:translateY(-50%);background:#151a35;border:1px solid #00f0ff;color:#00f0ff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;pointer-events:none;z-index:32;box-shadow:0 0 10px rgba(0,240,255,0.3)"></div>
             <div id="tvTimeBadge" style="display:none;position:absolute;bottom:4px;transform:translateX(-50%);background:#151a35;border:1px solid #8a2be2;color:#d7ddf5;padding:2px 6px;border-radius:4px;font-size:11px;pointer-events:none;z-index:32;box-shadow:0 0 10px rgba(138,43,226,0.3)"></div>
           </div>
 
-          <!-- Mode Toggle Pill: Sync Crosshair vs Direct Interactive TV -->
-          <div id="tvSyncCtrl" style="position:absolute;top:10px;left:10px;z-index:35;display:flex;align-items:center;background:rgba(16,20,42,0.92);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:20px;padding:2px 4px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
-            <button id="btnTvSyncMode" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:var(--panel2);color:var(--cyan);font-weight:700;" title="Toggle Sync Crosshair with Left Dock Indicators">✛ Sync Dock: ON</button>
-            <button id="btnTvInteract" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:none;color:var(--muted);" title="Allow clicking directly on TradingView chart controls">👆 Interact TV</button>
+          <!-- Mode Toggle Pill: Switch between Drawing/Trading on TradingView vs Syncing with Dock Indicators -->
+          <div id="tvSyncCtrl" style="position:absolute;top:46px;left:60px;z-index:35;display:flex;align-items:center;background:rgba(16,20,42,0.92);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:20px;padding:2px 4px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+            <button id="btnTvInteract" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:var(--panel2);color:var(--cyan);font-weight:700;" title="Full mouse control: draw, pan, zoom, click indicators inside TradingView">✏ Draw &amp; Control</button>
+            <button id="btnTvSyncMode" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:none;color:var(--muted);font-weight:400;" title="Sync crosshair and values directly into Left Dock indicators (Hotkeys: 'C' or hold 'Shift')">✛ Sync Dock Indicators</button>
           </div>
         </div>
 
@@ -545,7 +545,7 @@ let askPriceLine1 = null;
 let askPriceLine2 = null;
 let posLines = [];
 let tvWidget = null;
-let tvSyncMode = true;
+let tvSyncMode = false; // Default: false = full click & drawing control on TradingView
 let liveVisibleBars = 110;
 
 const isF = Number.isFinite;
@@ -645,10 +645,9 @@ function initTvCrosshairSync() {
       btnSync.style.background = on ? 'var(--panel2)' : 'none';
       btnSync.style.color = on ? 'var(--cyan)' : 'var(--muted)';
       btnSync.style.fontWeight = on ? '700' : '400';
-      btnSync.textContent = on ? '✛ Sync Dock: ON' : '✛ Sync Dock: OFF';
 
       btnInteract.style.background = on ? 'none' : 'var(--panel2)';
-      btnInteract.style.color = on ? 'var(--muted)' : 'var(--gold)';
+      btnInteract.style.color = on ? 'var(--muted)' : 'var(--cyan)';
       btnInteract.style.fontWeight = on ? '400' : '700';
     }
     if (!on) {
@@ -660,8 +659,11 @@ function initTvCrosshairSync() {
     }
   }
 
-  if (btnSync) btnSync.onclick = () => setTvSync(true);
-  if (btnInteract) btnInteract.onclick = () => setTvSync(false);
+  if (btnSync) btnSync.onclick = () => { setTvSync(true); toast('✛ Dock Sync: Move mouse to inspect indicators'); };
+  if (btnInteract) btnInteract.onclick = () => { setTvSync(false); toast('✏ Drawing Mode: Direct control of TradingView'); };
+
+  // Set default initial state: Draw & Control (pointer-events: none)
+  setTvSync(false);
 
   // Wheel zoom on live overlay scales docked indicators in tandem
   overlay.addEventListener('wheel', e => {
@@ -710,10 +712,8 @@ function initTvCrosshairSync() {
     }
 
     // 3. Exact Candle Alignment
-    // TradingView left drawing toolbar = 52px
-    // TradingView right price scale = 65px + right offset padding = 45px
-    const xLeft = 52;
-    const xLatest = Math.max(xLeft + 50, W - 110);
+    // Overlay is already bounded to the active candle canvas
+    const xLatest = Math.max(30, W - 45);
 
     const cs = V1.candles;
     if (cs && cs.length) {
@@ -723,10 +723,10 @@ function initTvCrosshairSync() {
       if (x >= xLatest) {
         // Pointing at or past the latest candle -> lock directly to the latest candle
         targetIdx = lastIdx;
-      } else if (x <= xLeft) {
+      } else if (x <= 0) {
         targetIdx = Math.max(0, lastIdx - liveVisibleBars);
       } else {
-        const progress = (x - xLeft) / (xLatest - xLeft);
+        const progress = Math.max(0, Math.min(1, x / xLatest));
         targetIdx = Math.round((lastIdx - liveVisibleBars) + progress * liveVisibleBars);
         targetIdx = Math.max(0, Math.min(lastIdx, targetIdx));
       }
@@ -751,6 +751,26 @@ function initTvCrosshairSync() {
     pBadge.style.display = 'none';
     tBadge.style.display = 'none';
     syncDockedCrosshair(null, null);
+  });
+
+  // Global hotkeys for effortless live inspection:
+  // Hold 'Shift' or press 'C' to temporarily inspect dock indicators, release to resume drawing!
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+    if (!S.replayOn) {
+      if (e.key === 'c' || e.key === 'C') {
+        setTvSync(!tvSyncMode);
+        toast(tvSyncMode ? '✛ Sync Dock: ON' : '✏ Draw & Control: ON');
+      } else if (e.key === 'Shift' && !tvSyncMode) {
+        setTvSync(true);
+      }
+    }
+  });
+
+  document.addEventListener('keyup', e => {
+    if (!S.replayOn && e.key === 'Shift') {
+      setTvSync(false);
+    }
   });
 }
 
@@ -2577,6 +2597,7 @@ async function changeTf(tf) {
   if (!S.replayOn) {
     setupLiveModeView();
     renderLiveTradingView(S.symbol, V1.tf);
+    toast(`Timeframe: ${tf} (Synced with Live Chart & Indicators)`);
   }
 }
 
@@ -2599,7 +2620,7 @@ function toggleSidePanel() {
 function init() {
   initDomCache();
 
-  // Populate timeframe segment buttons
+  // Populate timeframe segment buttons (Master Timeframe Control)
   Object.keys(TF).forEach(tf => $('tfSeg').append(el('button', { 'data-tf': tf, class: tf === S.tf ? 'on' : '', onclick: () => changeTf(tf) }, tf)));
 
   // Setup initial control values
