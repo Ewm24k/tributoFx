@@ -40,7 +40,6 @@ input[type=checkbox]{accent-color:var(--violet)}
 .muted{color:var(--muted)}
 .up{color:var(--up)} .dn{color:var(--dn)}
 
-/* Strict 3-Column Grid: Tools (46px) | Center Stage (1fr) | Account Panel (350px) */
 .main{display:grid;grid-template-columns:46px minmax(0, 1fr) 350px;min-height:0;height:100%;transition:grid-template-columns .15s ease}
 .main.side-collapsed{grid-template-columns:46px minmax(0, 1fr) 0px}
 .main.side-collapsed .side{display:none}
@@ -50,10 +49,8 @@ input[type=checkbox]{accent-color:var(--violet)}
 .tools button:hover{background:var(--panel2)}
 .tools button.on{border-color:var(--cyan);box-shadow:0 0 10px rgba(0,240,255,.35)}
 
-/* Center Stage: Flex Row housing Left Indicator Dock and Main Chart */
 .center-stage{display:flex;min-width:0;min-height:0;width:100%;height:100%;position:relative;overflow:hidden}
 
-/* Left Indicator Dock Panel */
 .ind-dock{
   width:320px;min-width:220px;max-width:550px;flex-shrink:0;height:100%;
   background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;
@@ -68,7 +65,6 @@ input[type=checkbox]{accent-color:var(--violet)}
 .ind-dock-list::-webkit-scrollbar{width:4px}
 .ind-dock-list::-webkit-scrollbar-thumb{background:var(--line);border-radius:4px}
 
-/* Individual Indicator Cards in Left Dock */
 .ind-card{
   background:var(--panel2);border:1px solid var(--line);border-radius:8px;
   display:flex;flex-direction:column;overflow:hidden;position:relative;box-shadow:0 4px 12px rgba(0,0,0,0.25);
@@ -96,7 +92,6 @@ input[type=checkbox]{accent-color:var(--violet)}
 }
 .dock-h-resizer:hover, .dock-h-resizer.dragging{background:rgba(138,43,226,0.4)}
 
-/* Main Chart Wrapper */
 #chartWrap{flex:1;min-width:0;min-height:0;height:100%;position:relative;display:grid;grid-template-columns:1fr;grid-template-rows:1fr;width:100%}
 #chartWrap.split-horz{grid-template-rows:1fr 1fr;grid-template-columns:1fr}
 #chartWrap.split-vert{grid-template-columns:1fr 1fr;grid-template-rows:1fr}
@@ -314,7 +309,7 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       <button id="btnFit" title="Fit chart">⤢</button>
     </div>
 
-    <!-- Center Stage: Houses Left Indicator Dock and Main Chart in Fixed Proportion -->
+    <!-- Center Stage -->
     <div class="center-stage">
       <div id="indDock" class="ind-dock" style="display:none">
         <div class="ind-dock-head">
@@ -330,8 +325,8 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
         <div id="tvEmbedWrap" style="display:none;position:absolute;inset:0;z-index:28;background:var(--bg);width:100%;height:100%;overflow:hidden">
           <div id="tvChartContainer" style="width:100%;height:100%;"></div>
           
-          <!-- Live Crosshair Tracker Layer: bounded to chart canvas area so top bar and left tools are NEVER blocked -->
-          <div id="tvCrossOverlay" style="position:absolute;top:38px;left:52px;right:60px;bottom:26px;z-index:30;cursor:crosshair;pointer-events:none;">
+          <!-- Live Crosshair Tracker Layer: bounds to chart canvas area so top bar and left tools are NEVER blocked -->
+          <div id="tvCrossOverlay" style="position:absolute;top:38px;left:52px;right:60px;bottom:26px;z-index:30;cursor:crosshair;pointer-events:auto">
             <svg id="tvCrosshairSvg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;">
               <line id="tvCrossV" x1="0" y1="0" x2="0" y2="100%" stroke="rgba(215,221,245,0.7)" stroke-width="1" stroke-dasharray="3 3" style="display:none;"></line>
               <line id="tvCrossH" x1="0" y1="0" x2="100%" y2="0" stroke="rgba(215,221,245,0.7)" stroke-width="1" stroke-dasharray="3 3" style="display:none;"></line>
@@ -342,8 +337,8 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
 
           <!-- Mode Toggle Pill: Switch between Drawing/Trading on TradingView vs Syncing with Dock Indicators -->
           <div id="tvSyncCtrl" style="position:absolute;top:46px;left:60px;z-index:35;display:flex;align-items:center;background:rgba(16,20,42,0.92);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:20px;padding:2px 4px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
-            <button id="btnTvInteract" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:var(--panel2);color:var(--cyan);font-weight:700;" title="Full mouse control: draw, pan, zoom, click indicators inside TradingView">✏ Draw &amp; Control</button>
-            <button id="btnTvSyncMode" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:none;color:var(--muted);font-weight:400;" title="Sync crosshair and values directly into Left Dock indicators (Hotkeys: 'C' or hold 'Shift')">✛ Sync Dock Indicators</button>
+            <button id="btnTvSyncMode" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:var(--panel2);color:var(--cyan);font-weight:700;" title="Sync crosshair and values directly into Left Dock indicators (Hotkeys: 'C' or hold 'Shift')">✛ Sync Dock: ON</button>
+            <button id="btnTvInteract" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:none;color:var(--muted);font-weight:400;" title="Full mouse control: draw, pan, zoom inside TradingView">✏ Draw &amp; Control</button>
           </div>
         </div>
 
@@ -525,7 +520,7 @@ const LW = window.LightweightCharts;
 if (!LW) return;
 
 /* =====================================================================
-   TOP-LEVEL VARIABLE DECLARATIONS (ZERO TEMPORAL DEAD ZONE)
+   TOP-LEVEL VARIABLE DECLARATIONS
    ===================================================================== */
 let markersDirty = true;
 let uiRafPending = false;
@@ -545,7 +540,7 @@ let askPriceLine1 = null;
 let askPriceLine2 = null;
 let posLines = [];
 let tvWidget = null;
-let tvSyncMode = false; // Default: false = full click & drawing control on TradingView
+let tvSyncMode = true;
 let liveVisibleBars = 110;
 
 const isF = Number.isFinite;
@@ -662,10 +657,8 @@ function initTvCrosshairSync() {
   if (btnSync) btnSync.onclick = () => { setTvSync(true); toast('✛ Dock Sync: Move mouse to inspect indicators'); };
   if (btnInteract) btnInteract.onclick = () => { setTvSync(false); toast('✏ Drawing Mode: Direct control of TradingView'); };
 
-  // Set default initial state: Draw & Control (pointer-events: none)
-  setTvSync(false);
+  setTvSync(true);
 
-  // Wheel zoom on live overlay scales docked indicators in tandem
   overlay.addEventListener('wheel', e => {
     if (!tvSyncMode) return;
     const delta = e.deltaY;
@@ -692,7 +685,6 @@ function initTvCrosshairSync() {
     const y = e.clientY - rect.top;
     const W = rect.width;
 
-    // 1. Move crosshair lines on the Live Chart
     vLine.setAttribute('x1', x);
     vLine.setAttribute('x2', x);
     vLine.style.display = 'block';
@@ -701,7 +693,6 @@ function initTvCrosshairSync() {
     hLine.setAttribute('y2', y);
     hLine.style.display = 'block';
 
-    // 2. Price badge on price axis (Y)
     const price = V1.c.candleSeries.coordinateToPrice(y);
     if (price != null && isF(price)) {
       pBadge.textContent = fmtP(price);
@@ -711,17 +702,13 @@ function initTvCrosshairSync() {
       pBadge.style.display = 'none';
     }
 
-    // 3. Exact Candle Alignment
-    // Overlay is already bounded to the active candle canvas
     const xLatest = Math.max(30, W - 45);
-
     const cs = V1.candles;
     if (cs && cs.length) {
       const lastIdx = cs.length - 1;
       let targetIdx = lastIdx;
 
       if (x >= xLatest) {
-        // Pointing at or past the latest candle -> lock directly to the latest candle
         targetIdx = lastIdx;
       } else if (x <= 0) {
         targetIdx = Math.max(0, lastIdx - liveVisibleBars);
@@ -736,8 +723,6 @@ function initTvCrosshairSync() {
         tBadge.textContent = fmtDT(candle.time);
         tBadge.style.left = x + 'px';
         tBadge.style.display = 'block';
-
-        // 4. Pass exact timestamp to syncDockedCrosshair so it snaps precisely to this candle
         syncDockedCrosshair(candle.time, targetIdx);
       }
     } else {
@@ -753,10 +738,9 @@ function initTvCrosshairSync() {
     syncDockedCrosshair(null, null);
   });
 
-  // Global hotkeys for effortless live inspection:
-  // Hold 'Shift' or press 'C' to temporarily inspect dock indicators, release to resume drawing!
   document.addEventListener('keydown', e => {
-    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+    const t = e.target.tagName;
+    if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
     if (!S.replayOn) {
       if (e.key === 'c' || e.key === 'C') {
         setTvSync(!tvSyncMode);
@@ -838,8 +822,6 @@ const INSTRUMENTS = [
 /* =====================================================================
    CORE ENGINE: HELPERS, VIEWS, ACCOUNT & DATA LOADERS
    ===================================================================== */
-
-/* ---------- DOM helpers ---------- */
 const $ = id => document.getElementById(id);
 function el(tag, attrs, ...kids) {
   const e = document.createElement(tag);
@@ -859,7 +841,6 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} }
 };
 
-/* ---------- Constants & state ---------- */
 const TF = { '1m': 60, '5m': 300, '15m': 900, '1h': 3600, '4h': 14400, '1d': 86400 };
 const C = { up: '#00e5a0', dn: '#ff3d71' };
 const S = Object.assign({
@@ -868,6 +849,10 @@ const S = Object.assign({
 }, store.get('tfx_settings', {}));
 if (!TF[S.tf]) S.tf = '15m';
 if (!TF[S.tf2]) S.tf2 = S.tf;
+
+// Enforce practice replay on load/refresh
+S.replayOn = true;
+
 function saveSettings() { S.tf = V1.tf; S.tf2 = V2.tf; store.set('tfx_settings', S); }
 
 const A = Object.assign({ balance: 10000, startBal: 10000, positions: [], history: [], nextId: 1 }, store.get('tfx_acct', {}));
@@ -884,7 +869,6 @@ function initDomCache() {
 }
 let activeChartIndex = 1;
 
-/* ---------- Charts & views ---------- */
 function makeChart(id) {
   const chart = LW.createChart($(id), {
     autoSize: true,
@@ -929,7 +913,6 @@ function snapTime(v, t) {
   return r < 0 ? -1 : cs[r].time;
 }
 
-/* ---------- Formatting & bar helpers ---------- */
 const signed = n => (n > 0 ? '+' : '') + (+n || 0).toFixed(2);
 const fmtP = x => (x == null || !isF(x)) ? '–' : (+x).toFixed(S.prec);
 const fmtMoney = x => (+x || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -967,7 +950,6 @@ function zoomChart(f) {
   ts.setVisibleLogicalRange({ from: mid - half, to: mid + half });
 }
 
-/* ---------- Data loading (Binance + offline demo) ---------- */
 const _cache = new Map();
 const BMAP = { XAUUSD: 'PAXGUSDT', EURUSD: 'EURUSDT', GBPUSD: 'GBPUSDT' };
 function rangeStart(tfSec) {
@@ -1026,7 +1008,6 @@ async function loadData(tf, force) {
   _cache.set(key, res); return res;
 }
 
-/* ---------- Script templates ---------- */
 const TEMPLATES = {
   'EMA Cross (9/21)': `indicator({ name: 'EMA Cross', overlay: true });
 plot(ta.ema(close, 9), { title: 'EMA 9', color: '#00e5a0' });
@@ -1039,7 +1020,6 @@ plot(m, { title: 'MOM', color: '#00f0ff', style: 'histogram' });
 hline(0, { color: '#4a5380' });`
 };
 
-/* ---------- Wiring that init() never did (runs right after init) ---------- */
 setTimeout(() => {
   const tplSel = $('tplSel');
   if (tplSel) Object.keys(TEMPLATES).forEach(k => tplSel.append(el('option', { value: k }, k)));
@@ -1226,7 +1206,6 @@ function runScript(code, cols) {
 
 const line = (title, values, color, w = 2) => ({ title, values, color, type: 'line', lineWidth: w });
 
-// Complete MT5 Suite Indicators
 const BUILTIN = {
   sma: { name: 'SMA', params: [{ k:'len', l:'Length', t:'num', d:50, min:1 }, { k:'color', l:'Color', t:'color', d:'#ffd43b' }], run: (c, p) => ({ overlay: true, plots: [line('SMA ' + p.len, ta.sma(c.close, p.len), p.color)] }) },
   ema: { name: 'EMA', params: [{ k:'len', l:'Length', t:'num', d:21, min:1 }, { k:'color', l:'Color', t:'color', d:'#00f0ff' }], run: (c, p) => ({ overlay: true, plots: [line('EMA ' + p.len, ta.ema(c.close, p.len), p.color)] }) },
@@ -1351,9 +1330,6 @@ const BUILTIN = {
   }
 };
 
-/* =====================================================================
-   ALL FUNCTIONS DECLARED WITH HOISTED FUNCTION DECLARATIONS
-   ===================================================================== */
 function isDockActive() {
   const bottomCount = (typeof V1 !== 'undefined' && V1.IND) ? V1.IND.filter(i => i.spec && !i.spec.overlay).length : 0;
   return (typeof S !== 'undefined' && S.dockInd) || bottomCount > 3;
@@ -1629,7 +1605,6 @@ function buildDockedIndicators() {
     const n = visCount(V1);
     seriesList.forEach((sr, i) => sr.setData(plotData(V1, ind.spec.plots[i], n)));
 
-    // Vertical card resizer
     let startY = 0, startH = 0;
     const onMove = e => {
       const newH = Math.max(75, Math.min(500, startH + (e.clientY - startY)));
@@ -1692,12 +1667,16 @@ function syncDockedCrosshair(time, logical) {
     const svg = d.crossSvg;
     svg.innerHTML = '';
     
-    if (time != null || logical != null) {
+    if (logical != null || time != null) {
       let x = null;
-      if (time != null) x = d.chart.timeScale().timeToCoordinate(time);
-      if (x == null && logical != null) x = d.chart.timeScale().logicalToCoordinate(logical);
+      if (logical != null) {
+        try { x = d.chart.timeScale().logicalToCoordinate(logical); } catch {}
+      }
+      if (x == null && time != null) {
+        try { x = d.chart.timeScale().timeToCoordinate(time); } catch {}
+      }
       if (x != null && x >= 0 && x <= d.card.clientWidth) {
-        svg.innerHTML = `<line x1="${x}" y1="0" x2="${x}" y2="${d.card.clientHeight}" stroke="rgba(255,255,255,0.45)" stroke-width="1" stroke-dasharray="3 3"/>`;
+        svg.innerHTML = `<line x1="${x}" y1="0" x2="${x}" y2="100%" stroke="rgba(255,255,255,0.55)" stroke-width="1" stroke-dasharray="3 3"/>`;
       }
     }
 
@@ -2128,9 +2107,6 @@ function checkStops(lo, hi) {
   if (A.positions.length && equity() <= usedMargin() * 0.1) { closeAll('Liquidated'); toast('Margin call'); }
 }
 
-/* =====================================================================
-   DRAGGABLE TP/SL & ENTRY OVERLAY
-   ===================================================================== */
 function pipSize(price) { return S.prec >= 3 ? Math.pow(10, -(S.prec - 1)) : (price >= 1000 ? 1 : 0.1); }
 function levelPnl(p, price) { return (price - p.entry) * p.qty * dirOf(p) - p.fees - price * p.qty * feePct() / 100; }
 
@@ -2620,10 +2596,8 @@ function toggleSidePanel() {
 function init() {
   initDomCache();
 
-  // Populate timeframe segment buttons (Master Timeframe Control)
   Object.keys(TF).forEach(tf => $('tfSeg').append(el('button', { 'data-tf': tf, class: tf === S.tf ? 'on' : '', onclick: () => changeTf(tf) }, tf)));
 
-  // Setup initial control values
   $('symInput').value = S.symbol;
   $('rangeSel').value = S.range;
   $('srcSel').value = S.source;
@@ -2632,8 +2606,8 @@ function init() {
   $('chkSpread').checked = !!S.spreadOn;
   $('selBroker').value = S.broker || 'XM';
   $('ordBal').value = A.startBal;
+  $('replayChk').checked = true; // Always checked on refresh
 
-  // Replay control listeners
   $('btnStart').onclick = startReplay;
   $('btnPlay').onclick = togglePlay;
   $('btnTick').onclick = stepTick;
@@ -2654,25 +2628,21 @@ function init() {
     else { setReplaySpeed('real'); toast(`Speed: 1:1 Real Live (${master().tf})`); }
   };
 
-  // Zoom controls
   $('btnFit').onclick = () => { C1.chart.timeScale().fitContent(); C2.chart.timeScale().fitContent(); };
   $('btnZoomIn').onclick = () => zoomChart(0.7);
   $('btnZoomOut').onclick = () => zoomChart(1.4);
   $('btnZoomReset').onclick = () => { C1.chart.timeScale().fitContent(); C2.chart.timeScale().fitContent(); };
 
-  // Side panel toggle
   $('btnToggleSide').onclick = toggleSidePanel;
   $('btnSideToggleFloat').onclick = toggleSidePanel;
   $('btnCloseSideX').onclick = toggleSidePanel;
 
-  // Drawing tool selectors
   $('toolCursor').onclick = () => setTool('cursor');
   $('toolH').onclick = () => setTool('h');
   $('toolTrend').onclick = () => setTool('trend');
   $('toolRuler').onclick = () => setTool('ruler');
   $('toolClear').onclick = clearDrawings;
 
-  // Trading panel
   $('btnBuy').onclick = () => openPosition('long');
   $('btnSell').onclick = () => openPosition('short');
   $('btnCloseAll').onclick = () => { if (A.positions.length) closeAll('Manual'); };
@@ -2684,16 +2654,16 @@ function init() {
   $('tabPos').onclick = () => { $('tabPos').classList.add('on'); $('tabHist').classList.remove('on'); $('panePos').hidden = false; $('paneHist').hidden = true; };
   $('tabHist').onclick = () => { $('tabHist').classList.add('on'); $('tabPos').classList.remove('on'); $('panePos').hidden = true; $('paneHist').hidden = false; renderHistory(); };
 
-  // Data & Broker updates
   $('rangeSel').onchange = async () => { S.range = $('rangeSel').value; saveSettings(); await reload(currentCursor(), false); };
   $('srcSel').onchange = async () => { S.source = $('srcSel').value; saveSettings(); await reload(currentCursor(), false); };
   $('btnUpdateData').onclick = async () => { toast('Updating data...'); await reload(currentCursor(), true); toast('Data updated!'); };
   $('chkSpread').addEventListener('change', () => { S.spreadOn = $('chkSpread').checked; saveSettings(); updateBidAsk(Pz.last); syncPriceLines(); updateAll(); toast(S.spreadOn ? `Spread ON (${S.broker})` : 'Spread OFF'); });
   $('selBroker').addEventListener('change', () => { S.broker = $('selBroker').value; saveSettings(); updateBidAsk(Pz.last); syncPriceLines(); updateAll(); toast(`Broker: ${S.broker}`); });
 
-  // Replay & Live Mode Switcher with Exact Candle Dock Crosshair Synchronization
   $('replayChk').onchange = () => {
-    S.replayOn = $('replayChk').checked; pause();
+    S.replayOn = $('replayChk').checked;
+    saveSettings();
+    pause();
     const isReplay = S.replayOn;
     const tvLayer = $('tvEmbedWrap');
 
@@ -2711,11 +2681,11 @@ function init() {
       setupLiveModeView();
       renderLiveTradingView(S.symbol, V1.tf);
       updateDockVisibility();
+      initTvCrosshairSync();
       toast(`Mode: Real-Time Live (${S.symbol})`);
     }
   };
 
-  // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     const t = e.target.tagName; if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
     if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
@@ -2724,10 +2694,8 @@ function init() {
     else if (e.key === 's' || e.key === 'S') openPosition('short');
   });
 
-  // Clock
   setInterval(() => { const c = $('clockTxt'); if (c) c.textContent = new Date().toLocaleString('en-GB', { hour12: false }); }, 1000);
 
-  // Crosshair move listener on main charts (Replay mode)
   VIEWS.forEach(v => v.c.chart.subscribeCrosshairMove(p => {
     v.pendingParam = p;
     if (v.legRaf) return;
@@ -2747,10 +2715,8 @@ function init() {
     if (isDockActive()) syncDockedChartsRange();
   });
 
-  // Initialize Live Crosshair Synchronization
   initTvCrosshairSync();
 
-  // Modal setup
   document.querySelectorAll('.modal').forEach(m => {
     m.addEventListener('click', e => { if (e.target === m || e.target.hasAttribute('data-close')) m.hidden = true; });
   });
@@ -2784,7 +2750,6 @@ function init() {
     applyIndChange(v); toast('Script applied to Chart ' + (v.n === 1 ? 'A' : 'B'));
   };
 
-  // Bloomberg Modal listeners
   $('symInput').addEventListener('click', openBloombergModal);
   $('bbClose').addEventListener('click', closeBloombergModal);
   $('bbModal').addEventListener('click', e => { if (e.target === $('bbModal')) closeBloombergModal(); });
@@ -2830,7 +2795,6 @@ function init() {
   $('paneChart1').addEventListener('pointerdown', () => setActive(1), true);
   $('paneChart2').addEventListener('pointerdown', () => setActive(2), true);
 
-  // Set speed, layout & defaults
   setReplaySpeed(S.speed);
   setLayoutMode(S.layout || 'single', true);
 
@@ -2849,16 +2813,11 @@ function init() {
   updateAll();
   reload(null, false);
 
-  if (!S.replayOn) {
-    const tvLayer = $('tvEmbedWrap');
-    if (tvLayer) tvLayer.style.display = 'block';
-    setupLiveModeView();
-    renderLiveTradingView(S.symbol, V1.tf);
-    updateDockVisibility();
-  }
+  // Guarantee Practice Replay on startup / refresh
+  const tvLayer = $('tvEmbedWrap');
+  if (tvLayer) tvLayer.style.display = 'none';
 }
 
-// Execute bootstrap
 init();
 
 })();
