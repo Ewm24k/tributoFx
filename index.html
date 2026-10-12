@@ -326,9 +326,25 @@ pre.doc{background:var(--panel2);border:1px solid var(--line);border-radius:8px;
       </div>
 
       <div id="chartWrap">
-        <!-- Live TradingView Overlay Layer -->
-        <div id="tvEmbedWrap" style="display:none;position:absolute;inset:0;z-index:28;background:var(--bg);width:100%;height:100%;">
+        <!-- Live TradingView Overlay Layer with Synchronized Crosshair -->
+        <div id="tvEmbedWrap" style="display:none;position:absolute;inset:0;z-index:28;background:var(--bg);width:100%;height:100%;overflow:hidden">
           <div id="tvChartContainer" style="width:100%;height:100%;"></div>
+          
+          <!-- Live Crosshair Tracker Layer for Dock Indicators Synchronization -->
+          <div id="tvCrossOverlay" style="position:absolute;inset:0;z-index:30;cursor:crosshair;pointer-events:auto">
+            <svg id="tvCrosshairSvg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;">
+              <line id="tvCrossV" x1="0" y1="0" x2="0" y2="100%" stroke="rgba(215,221,245,0.7)" stroke-width="1" stroke-dasharray="3 3" style="display:none;"></line>
+              <line id="tvCrossH" x1="0" y1="0" x2="100%" y2="0" stroke="rgba(215,221,245,0.7)" stroke-width="1" stroke-dasharray="3 3" style="display:none;"></line>
+            </svg>
+            <div id="tvPriceBadge" style="display:none;position:absolute;right:0;transform:translateY(-50%);background:#151a35;border:1px solid #00f0ff;color:#00f0ff;padding:2px 6px;border-radius:4px;font-size:11px;font-weight:700;pointer-events:none;z-index:32;box-shadow:0 0 10px rgba(0,240,255,0.3)"></div>
+            <div id="tvTimeBadge" style="display:none;position:absolute;bottom:4px;transform:translateX(-50%);background:#151a35;border:1px solid #8a2be2;color:#d7ddf5;padding:2px 6px;border-radius:4px;font-size:11px;pointer-events:none;z-index:32;box-shadow:0 0 10px rgba(138,43,226,0.3)"></div>
+          </div>
+
+          <!-- Mode Toggle Pill: Sync Crosshair vs Direct Interactive TV -->
+          <div id="tvSyncCtrl" style="position:absolute;top:10px;left:10px;z-index:35;display:flex;align-items:center;background:rgba(16,20,42,0.92);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:20px;padding:2px 4px;box-shadow:0 4px 16px rgba(0,0,0,0.5);">
+            <button id="btnTvSyncMode" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:var(--panel2);color:var(--cyan);font-weight:700;" title="Toggle Sync Crosshair with Left Dock Indicators">✛ Sync Dock: ON</button>
+            <button id="btnTvInteract" class="btn" style="padding:3px 9px;font-size:11px;border-radius:14px;border:0;background:none;color:var(--muted);" title="Allow clicking directly on TradingView chart controls">👆 Interact TV</button>
+          </div>
         </div>
 
         <div id="paneChart1" class="chart-pane-wrap active-pane">
@@ -529,6 +545,7 @@ let askPriceLine1 = null;
 let askPriceLine2 = null;
 let posLines = [];
 let tvWidget = null;
+let tvSyncMode = true;
 
 const isF = Number.isFinite;
 const nanArr = n => new Array(n).fill(NaN);
@@ -579,6 +596,103 @@ function renderLiveTradingView(sym = S.symbol, tf = V1.tf) {
   }
 }
 window.renderLiveTradingView = renderLiveTradingView;
+
+/* =====================================================================
+   LIVE TRADINGVIEW CROSSHAIR & LEFT DOCK SYNCHRONIZATION
+   ===================================================================== */
+function initTvCrosshairSync() {
+  const overlay = $('tvCrossOverlay');
+  const vLine = $('tvCrossV');
+  const hLine = $('tvCrossH');
+  const pBadge = $('tvPriceBadge');
+  const tBadge = $('tvTimeBadge');
+  const btnSync = $('btnTvSyncMode');
+  const btnInteract = $('btnTvInteract');
+
+  if (!overlay) return;
+
+  function setTvSync(on) {
+    tvSyncMode = on;
+    overlay.style.pointerEvents = on ? 'auto' : 'none';
+    if (btnSync && btnInteract) {
+      btnSync.style.background = on ? 'var(--panel2)' : 'none';
+      btnSync.style.color = on ? 'var(--cyan)' : 'var(--muted)';
+      btnSync.style.fontWeight = on ? '700' : '400';
+      btnSync.textContent = on ? '✛ Sync Dock: ON' : '✛ Sync Dock: OFF';
+
+      btnInteract.style.background = on ? 'none' : 'var(--panel2)';
+      btnInteract.style.color = on ? 'var(--muted)' : 'var(--gold)';
+      btnInteract.style.fontWeight = on ? '400' : '700';
+    }
+    if (!on) {
+      vLine.style.display = 'none';
+      hLine.style.display = 'none';
+      pBadge.style.display = 'none';
+      tBadge.style.display = 'none';
+      syncDockedCrosshair(null, null);
+    }
+  }
+
+  if (btnSync) btnSync.onclick = () => setTvSync(true);
+  if (btnInteract) btnInteract.onclick = () => setTvSync(false);
+
+  overlay.addEventListener('pointermove', e => {
+    if (!tvSyncMode) return;
+    const rect = overlay.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    // 1. Move crosshair lines on the Live Chart
+    vLine.setAttribute('x1', x);
+    vLine.setAttribute('x2', x);
+    vLine.style.display = 'block';
+
+    hLine.setAttribute('y1', y);
+    hLine.setAttribute('y2', y);
+    hLine.style.display = 'block';
+
+    // 2. Price badge on price axis (Y)
+    const price = V1.c.candleSeries.coordinateToPrice(y);
+    if (price != null && isF(price)) {
+      pBadge.textContent = fmtP(price);
+      pBadge.style.top = y + 'px';
+      pBadge.style.display = 'block';
+    } else {
+      pBadge.style.display = 'none';
+    }
+
+    // 3. Time calculation & Sync with Left Dock
+    const ts = V1.c.chart.timeScale();
+    let logical = ts.coordinateToLogical(x);
+    if (logical == null) {
+      const r = ts.getVisibleLogicalRange();
+      if (r) logical = r.from + (x / rect.width) * (r.to - r.from);
+    }
+
+    const cs = V1.candles;
+    if (logical != null && cs && cs.length) {
+      const idx = Math.min(cs.length - 1, Math.max(0, Math.round(logical)));
+      if (cs[idx]) {
+        tBadge.textContent = fmtDT(cs[idx].time);
+        tBadge.style.left = x + 'px';
+        tBadge.style.display = 'block';
+      }
+    } else {
+      tBadge.style.display = 'none';
+    }
+
+    // 4. Synchronize matching vertical line and values across all Left Dock indicators
+    syncDockedCrosshair(null, logical);
+  });
+
+  overlay.addEventListener('pointerleave', () => {
+    vLine.style.display = 'none';
+    hLine.style.display = 'none';
+    pBadge.style.display = 'none';
+    tBadge.style.display = 'none';
+    syncDockedCrosshair(null, null);
+  });
+}
 
 /* =====================================================================
    TOP-LEVEL DATA CONVERTERS
@@ -642,9 +756,7 @@ const INSTRUMENTS = [
 ];
 
 /* =====================================================================
-   PASTE THIS BLOCK right AFTER the `const INSTRUMENTS = [ ... ];` array
-   and BEFORE the "TECHNICAL ANALYSIS (TA) LIBRARY" comment.
-   Nothing else in your file needs to change.
+   CORE ENGINE: HELPERS, VIEWS, ACCOUNT & DATA LOADERS
    ===================================================================== */
 
 /* ---------- DOM helpers ---------- */
@@ -2317,7 +2429,7 @@ function renderScriptList() {
 
 /* =====================================================================
    MAIN INTERFACE CONTROLS & TIMEFRAME SELECTORS
-   ==================================================================== */
+   ===================================================================== */
 function markTf() {
   document.querySelectorAll('#tfSeg button').forEach(b => b.classList.toggle('on', b.dataset.tf === AV().tf));
 }
@@ -2492,6 +2604,7 @@ function init() {
   $('chkSpread').addEventListener('change', () => { S.spreadOn = $('chkSpread').checked; saveSettings(); updateBidAsk(Pz.last); syncPriceLines(); updateAll(); toast(S.spreadOn ? `Spread ON (${S.broker})` : 'Spread OFF'); });
   $('selBroker').addEventListener('change', () => { S.broker = $('selBroker').value; saveSettings(); updateBidAsk(Pz.last); syncPriceLines(); updateAll(); toast(`Broker: ${S.broker}`); });
 
+  // Replay & Live Mode Switcher with Left Dock Crosshair Synchronization
   $('replayChk').onchange = () => {
     S.replayOn = $('replayChk').checked; pause();
     const isReplay = S.replayOn;
@@ -2503,11 +2616,15 @@ function init() {
 
     if (isReplay) {
       if (tvLayer) tvLayer.style.display = 'none';
+      syncDockedCrosshair(null, null);
       startReplay();
       toast('Mode: Practice Replay');
     } else {
       if (tvLayer) tvLayer.style.display = 'block';
+      showAll();
       renderLiveTradingView(S.symbol, V1.tf);
+      updateDockVisibility();
+      syncDockedChartsRange();
       toast(`Mode: Real-Time Live (${S.symbol})`);
     }
   };
@@ -2524,7 +2641,7 @@ function init() {
   // Clock
   setInterval(() => { const c = $('clockTxt'); if (c) c.textContent = new Date().toLocaleString('en-GB', { hour12: false }); }, 1000);
 
-  // Crosshair move listener on main charts
+  // Crosshair move listener on main charts (Replay mode)
   VIEWS.forEach(v => v.c.chart.subscribeCrosshairMove(p => {
     v.pendingParam = p;
     if (v.legRaf) return;
@@ -2543,6 +2660,9 @@ function init() {
   V1.c.chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
     if (isDockActive()) syncDockedChartsRange();
   });
+
+  // Initialize Live Crosshair Synchronization
+  initTvCrosshairSync();
 
   // Modal setup
   document.querySelectorAll('.modal').forEach(m => {
@@ -2647,6 +2767,8 @@ function init() {
     const tvLayer = $('tvEmbedWrap');
     if (tvLayer) tvLayer.style.display = 'block';
     renderLiveTradingView(S.symbol, V1.tf);
+    updateDockVisibility();
+    syncDockedChartsRange();
   }
 }
 
