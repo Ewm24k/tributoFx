@@ -25,6 +25,7 @@ let askPriceLine2 = null;
 let posLines = [];
 let tvWidget = null;
 let tvSyncMode = true;
+let tvCal = null;
 let liveVisibleBars = 110;
 
 const isF = Number.isFinite;
@@ -80,6 +81,27 @@ window.renderLiveTradingView = renderLiveTradingView;
 /* =====================================================================
    LIVE TRADINGVIEW CROSSHAIR & EXACT CANDLE DOCK SYNCHRONIZATION
    ===================================================================== */
+function tvDockRange(lastIdx) {
+  const ov = $('tvCrossOverlay'), W = ov ? ov.clientWidth : 0;
+  const s = (tvCal && tvCal.s > 0) ? tvCal.s : 6.5;
+  const gap = (tvCal && isF(tvCal.gap)) ? tvCal.gap : 85;
+  if (!W) return { from: Math.max(0, lastIdx - (liveVisibleBars || 110)), to: lastIdx + 10 };
+  
+  const visibleBefore = (W - gap) / s;
+  const visibleAfter = gap / s;
+  return {
+    from: Math.max(0, Math.floor(lastIdx - visibleBefore)),
+    to: Math.ceil(lastIdx + visibleAfter)
+  };
+}
+
+function applyDockRange() {
+  const cs = V1.candles; if (!cs || !cs.length) return;
+  const range = tvDockRange(cs.length - 1);
+  try { V1.c.chart.timeScale().setVisibleLogicalRange(range); } catch {}
+  dockedIndicators.forEach(d => { try { d.chart.timeScale().setVisibleLogicalRange(range); } catch {} });
+}
+
 function setupLiveModeView() {
   pause();
   const m = master();
@@ -92,9 +114,7 @@ function setupLiveModeView() {
   for (const v of viewsNeeded()) renderView(v);
 
   const lastIdx = cs.length - 1;
-  const visibleBars = liveVisibleBars || 110;
-  const rightOffsetBars = 10;
-  const range = { from: Math.max(0, lastIdx - visibleBars), to: lastIdx + rightOffsetBars };
+  const range = tvDockRange(lastIdx);
 
   try {
     m.c.chart.timeScale().setVisibleLogicalRange(range);
@@ -105,6 +125,72 @@ function setupLiveModeView() {
   });
 }
 window.setupLiveModeView = setupLiveModeView;
+
+function syncLiveOverlayFromDock(targetIdx, clampedIdx) {
+  const overlay = $('tvCrossOverlay');
+  const vLine = $('tvCrossV');
+  const hLine = $('tvCrossH');
+  const pBadge = $('tvPriceBadge');
+  const tBadge = $('tvTimeBadge');
+  if (!overlay || !vLine || !hLine || !tvCal) return;
+
+  const W = overlay.clientWidth;
+  if (!W) return;
+  const cs = V1.candles;
+  if (!cs || !cs.length) return;
+  const lastIdx = cs.length - 1;
+
+  const xLatest = W - tvCal.gap;
+  const liveX = Math.round(xLatest + (targetIdx - lastIdx) * tvCal.s);
+
+  if (liveX < 0 || liveX > W) {
+    hideLiveCrosshair();
+    return;
+  }
+
+  vLine.setAttribute('x1', liveX);
+  vLine.setAttribute('x2', liveX);
+  vLine.style.display = 'block';
+
+  const candle = cs[clampedIdx];
+  if (candle && V1.c.candleSeries) {
+    const y = V1.c.candleSeries.priceToCoordinate(candle.close);
+    if (y != null && isF(y)) {
+      hLine.setAttribute('y1', y);
+      hLine.setAttribute('y2', y);
+      hLine.style.display = 'block';
+
+      if (pBadge) {
+        pBadge.textContent = fmtP(candle.close);
+        pBadge.style.top = y + 'px';
+        pBadge.style.display = 'block';
+      }
+    } else {
+      hLine.style.display = 'none';
+      if (pBadge) pBadge.style.display = 'none';
+    }
+
+    if (tBadge) {
+      tBadge.textContent = fmtDT(candle.time);
+      tBadge.style.left = liveX + 'px';
+      tBadge.style.display = 'block';
+    }
+  } else {
+    hLine.style.display = 'none';
+    if (pBadge) pBadge.style.display = 'none';
+  }
+}
+
+function hideLiveCrosshair() {
+  const vLine = $('tvCrossV');
+  const hLine = $('tvCrossH');
+  const pBadge = $('tvPriceBadge');
+  const tBadge = $('tvTimeBadge');
+  if (vLine) vLine.style.display = 'none';
+  if (hLine) hLine.style.display = 'none';
+  if (pBadge) pBadge.style.display = 'none';
+  if (tBadge) tBadge.style.display = 'none';
+}
 
 function initTvCrosshairSync() {
   const overlay = $('tvCrossOverlay');
@@ -118,8 +204,10 @@ function initTvCrosshairSync() {
   if (!overlay) return;
   if (initTvCrosshairSync.ready) return;
   initTvCrosshairSync.ready = true;
+  tvCal = store.get('tfx_tv_cal', null) || { gap: 85, s: 6.5 };
+  let calStep = 0;
 
-  let tvAuto = false, tvAutoTimer = null, tvFromCanvas = false; // tvAuto = overlay stepped aside by itself (not by the user's button)
+  let tvAuto = false, tvAutoTimer = null, tvFromCanvas = false;
   function setTvSync(on, auto) {
     clearTimeout(tvAutoTimer);
     tvAuto = !!auto;
@@ -136,10 +224,8 @@ function initTvCrosshairSync() {
       btnInteract.style.fontWeight = on ? '400' : '700';
     }
     if (!on) {
-      vLine.style.display = 'none';
-      hLine.style.display = 'none';
-      pBadge.style.display = 'none';
-      tBadge.style.display = 'none';
+      calStep = 0;
+      hideLiveCrosshair();
       syncDockedCrosshair(null, null);
     }
   }
@@ -160,7 +246,7 @@ function initTvCrosshairSync() {
     const cs = V1.candles;
     if (cs && cs.length) {
       const lastIdx = cs.length - 1;
-      const range = { from: Math.max(0, lastIdx - liveVisibleBars), to: lastIdx + 10 };
+      const range = { from: Math.max(0, lastIdx - liveVisibleBars), to: lastIdx + Math.round(tvCal.gap / tvCal.s) };
       dockedIndicators.forEach(d => {
         try { d.chart.timeScale().setVisibleLogicalRange(range); } catch {}
       });
@@ -168,23 +254,92 @@ function initTvCrosshairSync() {
     }
   }, { passive: true });
 
-  // Hand the mouse to TradingView automatically when the user wants to use it (scroll / pinch / click / its own toolbars & dialogs)
   const tvResume = () => { if (tvAuto) setTvSync(true); };
   const tvHandOver = ms => { if (!tvSyncMode) return; setTvSync(false, true); tvFromCanvas = true; if (ms) tvAutoTimer = setTimeout(tvResume, ms); };
-  overlay.addEventListener('wheel', () => tvHandOver(1500), { passive: true });
-  overlay.addEventListener('pointerdown', () => tvHandOver(4000));
+  overlay.addEventListener('wheel', () => { if (!calStep) tvHandOver(1500); }, { passive: true });
+  overlay.addEventListener('pointerdown', e => { if (calStep) tvCalibrate(e); else tvHandOver(4000); });
+
+  function tvSolveSpacing(xL, x2) {
+    const cs = V1.candles, last = cs.length - 1;
+    if (last < 20 || !(xL - x2 > 20)) return null;
+    let best = null;
+    for (let c = last - 1; c >= 0; c--) {
+      const s = (xL - x2) / (last - c);
+      if (s > 20) continue;
+      if (s < 2) break;
+      const from = Math.max(0, Math.floor(last - xL / s)), hc = cs[c].high;
+      let ok = true;
+      for (let i = from; i <= last; i++) if (cs[i].high > hc) { ok = false; break; }
+      if (!ok) continue;
+      const score = Math.abs(Math.log(s / 6.5));
+      if (!best || score < best.score) best = { s, c, score };
+    }
+    return best;
+  }
+
+  function tvCalibrate(e) {
+    const r = overlay.getBoundingClientRect(), x = e.clientX - r.left, W = r.width;
+    if (calStep === 1) {
+      tvCal.gap = Math.max(10, Math.round(W - x));
+      store.set('tfx_tv_cal', tvCal);
+      calStep = 2;
+      applyDockRange();
+      toast(`✓ Latest candle saved (Gap: ${tvCal.gap}px). Step 2/2: Click an earlier candle/peak, or Esc to finish`);
+    } else if (calStep === 2) {
+      const best = tvSolveSpacing(W - tvCal.gap, x);
+      if (!best) {
+        const dx = (W - tvCal.gap) - x;
+        if (dx > 25) {
+          tvCal.s = Math.max(2, Math.min(25, +(dx / 10).toFixed(1)));
+          store.set('tfx_tv_cal', tvCal);
+          calStep = 0;
+          applyDockRange();
+          toast(`✓ Aligned (~${tvCal.s.toFixed(1)} px per candle). Move mouse to test`);
+          return;
+        }
+        toast('Could not match that candle. Click a visible candle left of latest, or Esc');
+        return;
+      }
+      tvCal.s = best.s;
+      store.set('tfx_tv_cal', tvCal);
+      calStep = 0;
+      applyDockRange();
+      toast('✓ Aligned (' + best.s.toFixed(1) + ' px per candle). Move mouse to test');
+    }
+  }
+
+  const btnAlign = $('btnTvAlign');
+  if (btnAlign) btnAlign.onclick = () => { setTvSync(true); calStep = 1; toast('🎯 1/2: Click the LATEST candle (rightmost) on chart'); };
+  
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && calStep) { calStep = 0; toast('✓ Alignment saved'); }
+    if (!S.replayOn && tvSyncMode && !calStep) {
+      if (e.key === '[') {
+        tvCal.gap = Math.max(10, tvCal.gap - 2);
+        store.set('tfx_tv_cal', tvCal);
+        applyDockRange();
+        toast(`Gap Nudge: ${tvCal.gap}px`);
+      } else if (e.key === ']') {
+        tvCal.gap += 2;
+        store.set('tfx_tv_cal', tvCal);
+        applyDockRange();
+        toast(`Gap Nudge: ${tvCal.gap}px`);
+      }
+    }
+  });
+
   window.addEventListener('blur', () => setTimeout(() => {
     if (S.replayOn || (!tvSyncMode && !tvAuto)) return;
     const f = document.activeElement;
     if (f && f.tagName === 'IFRAME' && $('tvChartContainer').contains(f)) {
-      const fromCanvas = tvFromCanvas;               // click/drag on the chart itself -> short; its toolbars/dialogs -> long
+      const fromCanvas = tvFromCanvas;
       setTvSync(false, true);
       tvAutoTimer = setTimeout(tvResume, fromCanvas ? 4000 : 15000);
     }
   }, 0));
   window.addEventListener('focus', () => { if (!S.replayOn) tvResume(); });
   const tvWrap = $('tvEmbedWrap');
-  if (tvWrap) tvWrap.addEventListener('mouseenter', () => { if (!S.replayOn) tvResume(); }); // mouse comes back onto the chart -> sync again
+  if (tvWrap) tvWrap.addEventListener('mouseenter', () => { if (!S.replayOn) tvResume(); });
 
   overlay.addEventListener('pointermove', e => {
     if (!tvSyncMode) return;
@@ -210,28 +365,24 @@ function initTvCrosshairSync() {
       pBadge.style.display = 'none';
     }
 
-    const xLatest = Math.max(30, W - 45);
     const cs = V1.candles;
     if (cs && cs.length) {
       const lastIdx = cs.length - 1;
-      let targetIdx = lastIdx;
+      const xLatest = W - tvCal.gap;
+      const targetIdx = Math.round(lastIdx + (x - xLatest) / tvCal.s);
 
-      if (x >= xLatest) {
-        targetIdx = lastIdx;
-      } else if (x <= 0) {
-        targetIdx = Math.max(0, lastIdx - liveVisibleBars);
-      } else {
-        const progress = Math.max(0, Math.min(1, x / xLatest));
-        targetIdx = Math.round((lastIdx - liveVisibleBars) + progress * liveVisibleBars);
-        targetIdx = Math.max(0, Math.min(lastIdx, targetIdx));
-      }
-
-      const candle = cs[targetIdx];
-      if (candle) {
-        tBadge.textContent = fmtDT(candle.time);
+      if (targetIdx > lastIdx) {
+        const futureSec = (targetIdx - lastIdx) * (V1.tfSec || 60);
+        tBadge.textContent = fmtDT(cs[lastIdx].time + futureSec);
         tBadge.style.left = x + 'px';
         tBadge.style.display = 'block';
-        syncDockedCrosshair(candle.time, targetIdx);
+        syncDockedCrosshair(null, targetIdx);
+      } else {
+        const clampedIdx = Math.max(0, targetIdx);
+        tBadge.textContent = fmtDT(cs[clampedIdx].time);
+        tBadge.style.left = x + 'px';
+        tBadge.style.display = 'block';
+        syncDockedCrosshair(cs[clampedIdx].time, targetIdx);
       }
     } else {
       tBadge.style.display = 'none';
@@ -239,10 +390,7 @@ function initTvCrosshairSync() {
   });
 
   overlay.addEventListener('pointerleave', () => {
-    vLine.style.display = 'none';
-    hLine.style.display = 'none';
-    pBadge.style.display = 'none';
-    tBadge.style.display = 'none';
+    hideLiveCrosshair();
     syncDockedCrosshair(null, null);
   });
 
@@ -358,7 +506,6 @@ const S = Object.assign({
 if (!TF[S.tf]) S.tf = '15m';
 if (!TF[S.tf2]) S.tf2 = S.tf;
 
-// Enforce practice replay on load/refresh
 S.replayOn = true;
 
 function saveSettings() { S.tf = V1.tf; S.tf2 = V2.tf; store.set('tfx_settings', S); }
@@ -547,13 +694,15 @@ setTimeout(() => {
   $('btnCloseDock').onclick = () => toggleDock(false);
 
   const rz = $('dockHResizer');
-  rz.addEventListener('pointerdown', e => {
-    e.preventDefault(); rz.classList.add('dragging');
-    const sx = e.clientX, sw = $('indDock').clientWidth;
-    const mv = ev => { S.dockWidth = Math.max(220, Math.min(550, sw + ev.clientX - sx)); $('indDock').style.width = S.dockWidth + 'px'; syncDockedChartsRange(); };
-    const up = () => { rz.classList.remove('dragging'); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); saveSettings(); };
-    window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
-  });
+  if (rz) {
+    rz.addEventListener('pointerdown', e => {
+      e.preventDefault(); rz.classList.add('dragging');
+      const sx = e.clientX, sw = $('indDock').clientWidth;
+      const mv = ev => { S.dockWidth = Math.max(220, Math.min(550, sw + ev.clientX - sx)); $('indDock').style.width = S.dockWidth + 'px'; syncDockedChartsRange(); };
+      const up = () => { rz.classList.remove('dragging'); window.removeEventListener('pointermove', mv); window.removeEventListener('pointerup', up); saveSettings(); };
+      window.addEventListener('pointermove', mv); window.addEventListener('pointerup', up);
+    });
+  }
 }, 0);
 
 /* =====================================================================
@@ -666,7 +815,7 @@ const ta = {
     for (let i = 0; i < n; i++) {
       if (!isF(atr[i])) continue;
       const hl2 = (h[i] + l[i]) / 2, ub = hl2 + mult * atr[i], lb = hl2 - mult * atr[i];
-      if (!started) { fub = ub; flb = lb; dir = 1; started = true; }
+      if (!started) { ub; flb = lb; dir = 1; started = true; }
       else {
         const pf = fub, pl = flb;
         fub = (ub < pf || c[i - 1] > pf) ? ub : pf;
@@ -1069,12 +1218,22 @@ function buildDockedIndicators() {
 
     const body = document.createElement('div');
     body.className = 'ind-card-body';
+    body.style.position = 'relative';
     
     const chartEl = document.createElement('div');
     chartEl.className = 'ind-card-chart';
+    chartEl.style.width = '100%';
+    chartEl.style.height = '100%';
     
     const crossSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     crossSvg.setAttribute('class', 'ind-card-cross-svg');
+    crossSvg.style.position = 'absolute';
+    crossSvg.style.top = '0';
+    crossSvg.style.left = '0';
+    crossSvg.style.width = '100%';
+    crossSvg.style.height = '100%';
+    crossSvg.style.pointerEvents = 'none';
+    crossSvg.style.zIndex = '5';
     
     body.append(chartEl, crossSvg);
 
@@ -1113,6 +1272,32 @@ function buildDockedIndicators() {
     const n = visCount(V1);
     seriesList.forEach((sr, i) => sr.setData(plotData(V1, ind.spec.plots[i], n)));
 
+    card.addEventListener('pointermove', e => {
+      if (S.replayOn) return;
+      const r = chartEl.getBoundingClientRect();
+      const mouseX = e.clientX - r.left;
+      if (mouseX < 0 || mouseX > r.width) return;
+      
+      let logical = null;
+      try { logical = c.timeScale().coordinateToLogical(mouseX); } catch {}
+      if (logical == null) return;
+      const targetIdx = Math.round(logical);
+      const cs = V1.candles;
+      if (!cs || !cs.length) return;
+      const lastIdx = cs.length - 1;
+      const clampedIdx = Math.max(0, Math.min(lastIdx, targetIdx));
+      const t = cs[clampedIdx] ? cs[clampedIdx].time : null;
+
+      syncDockedCrosshair(t, targetIdx);
+      syncLiveOverlayFromDock(targetIdx, clampedIdx);
+    });
+
+    card.addEventListener('pointerleave', () => {
+      if (S.replayOn) return;
+      syncDockedCrosshair(null, null);
+      hideLiveCrosshair();
+    });
+
     let startY = 0, startH = 0;
     const onMove = e => {
       const newH = Math.max(75, Math.min(500, startH + (e.clientY - startY)));
@@ -1142,10 +1327,11 @@ window.buildDockedIndicators = buildDockedIndicators;
 
 function syncDockedChartsRange() {
   if (!dockedIndicators.length) return;
-  const r = V1.c.chart.timeScale().getVisibleLogicalRange();
-  if (!r) return;
+  const cs = V1.candles;
+  if (!cs || !cs.length) return;
+  const range = tvDockRange(cs.length - 1);
   dockedIndicators.forEach(d => {
-    try { d.chart.timeScale().setVisibleLogicalRange(r); } catch {}
+    try { d.chart.timeScale().setVisibleLogicalRange(range); } catch {}
   });
 }
 window.syncDockedChartsRange = syncDockedChartsRange;
@@ -1167,44 +1353,60 @@ window.bsearch = bsearch;
 function syncDockedCrosshair(time, logical) {
   if (!dockedIndicators.length) return;
   const cs = V1.candles, n = visCount(V1);
+  if (!cs || !n) return;
+
+  const lastIdx = cs.length - 1;
   let idx = -1;
-  if (time) idx = bsearch(V1, time);
+  if (time != null) idx = bsearch(V1, time);
+  if (idx < 0 && logical != null) {
+    const roundLg = Math.round(logical);
+    if (roundLg >= 0 && roundLg < n) idx = roundLg;
+  }
   const rawIdx = idx >= 0 ? idx : (logical != null ? Math.round(logical) : -1);
-  if (idx < 0 && logical != null) idx = Math.min(n - 1, Math.max(0, Math.round(logical)));
 
   dockedIndicators.forEach(d => {
     const svg = d.crossSvg;
-    svg.innerHTML = '';
+    if (svg) svg.innerHTML = '';
 
-    let native = false;
-    if (rawIdx >= 0 && rawIdx < n && d.seriesList.length && d.ind.spec) {
-      let price = 0;
-      for (const pl of d.ind.spec.plots) { const pv = pl.values[rawIdx]; if (isF(pv)) { price = pv; break; } }
-      try { d.chart.setCrosshairPosition(price, V1.candles[rawIdx].time, d.seriesList[0]); native = true; } catch {}
-    }
-    if (!native) { try { d.chart.clearCrosshairPosition(); } catch {} }
-
-    if (!native && (logical != null || time != null)) {
-      let x = null;
-      if (logical != null) {
-        try { x = d.chart.timeScale().logicalToCoordinate(logical); } catch {}
-      }
-      if (x == null && time != null) {
-        try { x = d.chart.timeScale().timeToCoordinate(time); } catch {}
-      }
-      if (x != null && x >= 0 && x <= d.card.clientWidth) {
-        svg.innerHTML = `<line x1="${x}" y1="0" x2="${x}" y2="100%" stroke="rgba(255,255,255,0.55)" stroke-width="1" stroke-dasharray="3 3"/>`;
-      }
+    if (rawIdx == null || rawIdx < 0) {
+      try { d.chart.clearCrosshairPosition(); } catch {}
+      d.valEl.textContent = '–';
+      return;
     }
 
-    if (idx >= 0 && idx < n && d.ind.spec) {
+    let x = null;
+    if (idx >= 0 && cs[idx]) {
+      try { x = d.chart.timeScale().timeToCoordinate(cs[idx].time); } catch {}
+    }
+    if (x == null && logical != null) {
+      try { x = d.chart.timeScale().logicalToCoordinate(logical); } catch {}
+    }
+
+    const chartW = d.card.clientWidth;
+    if (svg && x != null && isF(x) && x >= 0 && x <= chartW) {
+      svg.innerHTML = `<line x1="${x}" y1="0" x2="${x}" y2="100%" stroke="rgba(0,240,255,0.75)" stroke-width="1.2" stroke-dasharray="3 3"/>`;
+    }
+
+    if (idx >= 0 && idx < n && d.ind && d.ind.spec) {
       const vals = d.ind.spec.plots.map(pl => {
-        const v = pl.values[idx];
+        const v = pl.values ? pl.values[idx] : NaN;
         return isF(v) ? (Math.abs(v) >= 100 ? v.toFixed(2) : v.toFixed(4)) : '–';
       });
-      d.valEl.textContent = vals.join('  ');
+      d.valEl.textContent = vals.join('  ') || '–';
+
+      try {
+        let price = 0;
+        for (const pl of d.ind.spec.plots) {
+          const pv = pl.values ? pl.values[idx] : NaN;
+          if (isF(pv)) { price = pv; break; }
+        }
+        if (d.seriesList && d.seriesList.length && cs[idx]) {
+          d.chart.setCrosshairPosition(price, cs[idx].time, d.seriesList[0]);
+        }
+      } catch {}
     } else {
-      d.valEl.textContent = '–';
+      try { d.chart.clearCrosshairPosition(); } catch {}
+      d.valEl.textContent = (rawIdx > lastIdx) ? '[Empty Space]' : '–';
     }
   });
 }
@@ -1520,7 +1722,7 @@ function slaveState(v) {
     a = v.agg = { bt, next: l2, ok: l2 < mc.length && mc[l2].time - bt < m.tfSec, hi: -Infinity, lo: Infinity, vol: 0, last: NaN };
   }
   if (a.ok) {
-    while (a.next < R.i && mc[a.next].time < bt + tf) { const q = mc[a.next]; if (q.high > a.hi) a.hi = q.high; if (q.low < a.lo) a.lo = q.low; a.vol += q.volume; a.last = q.close; a.next++; }
+    while (a.next < R.i && mc[a.next].time < bt + tf) { const q = mc[a.next]; if (q.high > a.hi) a.hi = q.high; if (q.low < a.lo) a.low = q.low; a.vol += q.volume; a.last = q.close; a.next++; }
     let hh = a.hi, ll = a.lo, cl = a.last, vv = a.vol;
     if (R.k > 0 && R.i < mc.length && mc[R.i].time < bt + tf) { const p = partialCandle(mc[R.i], R.k, R.N); hh = Math.max(hh, p.high); ll = Math.min(ll, p.low); cl = p.close; vv += p.volume; }
     if (isF(cl)) { v.form = { time: bt, open: c.open, high: Math.max(hh, c.open), low: Math.min(ll, c.open), close: cl, volume: vv }; return; }
@@ -2104,6 +2306,7 @@ function toggleSidePanel() {
   setTimeout(() => {
     window.dispatchEvent(new Event('resize'));
     sizePanes(V1);
+    applyDockRange();
   }, 100);
 }
 
@@ -2123,7 +2326,7 @@ function init() {
   $('chkSpread').checked = !!S.spreadOn;
   $('selBroker').value = S.broker || 'XM';
   $('ordBal').value = A.startBal;
-  $('replayChk').checked = true; // Always checked on refresh
+  $('replayChk').checked = true;
 
   $('btnStart').onclick = startReplay;
   $('btnPlay').onclick = togglePlay;
@@ -2334,7 +2537,6 @@ function init() {
   updateAll();
   reload(null, false);
 
-  // Guarantee Practice Replay on startup / refresh
   const tvLayer = $('tvEmbedWrap');
   if (tvLayer) tvLayer.style.display = 'none';
 }
