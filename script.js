@@ -119,7 +119,10 @@ function initTvCrosshairSync() {
   if (initTvCrosshairSync.ready) return;
   initTvCrosshairSync.ready = true;
 
-  function setTvSync(on) {
+  let tvAuto = false, tvAutoTimer = null; // tvAuto = overlay stepped aside by itself (not by the user's button)
+  function setTvSync(on, auto) {
+    clearTimeout(tvAutoTimer);
+    tvAuto = !!auto;
     tvSyncMode = on;
     overlay.style.pointerEvents = on ? 'auto' : 'none';
     if (btnSync && btnInteract) {
@@ -143,7 +146,7 @@ function initTvCrosshairSync() {
   if (btnSync) btnSync.onclick = () => { setTvSync(true); toast('✛ Dock Sync: Move mouse to inspect indicators'); };
   if (btnInteract) btnInteract.onclick = () => { setTvSync(false); toast('✏ Drawing Mode: Direct control of TradingView'); };
 
-  setTvSync(false);
+  setTvSync(true);
 
   overlay.addEventListener('wheel', e => {
     if (!tvSyncMode) return;
@@ -163,6 +166,18 @@ function initTvCrosshairSync() {
       try { V1.c.chart.timeScale().setVisibleLogicalRange(range); } catch {}
     }
   }, { passive: true });
+
+  // Hand the mouse to TradingView automatically when the user wants to use it (scroll / pinch / click / its own toolbars & dialogs)
+  const tvResume = () => { if (tvAuto) setTvSync(true); };
+  const tvHandOver = ms => { if (!tvSyncMode) return; setTvSync(false, true); if (ms) tvAutoTimer = setTimeout(tvResume, ms); };
+  overlay.addEventListener('wheel', () => tvHandOver(1500), { passive: true });
+  overlay.addEventListener('pointerdown', () => tvHandOver(4000));
+  window.addEventListener('blur', () => setTimeout(() => {
+    if (S.replayOn || (!tvSyncMode && !tvAuto)) return;
+    const f = document.activeElement;
+    if (f && f.tagName === 'IFRAME' && $('tvChartContainer').contains(f)) setTvSync(false, true);
+  }, 0));
+  window.addEventListener('focus', () => { if (!S.replayOn) tvResume(); });
 
   overlay.addEventListener('pointermove', e => {
     if (!tvSyncMode) return;
@@ -1067,7 +1082,7 @@ function buildDockedIndicators() {
       autoSize: true,
       layout: { background: { type: LW.ColorType.Solid, color: '#10142a' }, textColor: '#7f89b3', fontFamily: 'Inter, system-ui, sans-serif' },
       grid: { vertLines: { color: 'rgba(29,35,66,0.35)' }, horzLines: { color: 'rgba(29,35,66,0.35)' } },
-      crosshair: { mode: LW.CrosshairMode.Normal },
+      crosshair: { mode: LW.CrosshairMode.Normal, horzLine: { visible: false, labelVisible: false } },
       rightPriceScale: { borderColor: '#1d2342', scaleMargins: { top: 0.1, bottom: 0.1 } },
       timeScale: { visible: false, borderColor: '#1d2342' },
       handleScroll: false,
@@ -1147,13 +1162,22 @@ function syncDockedCrosshair(time, logical) {
   const cs = V1.candles, n = visCount(V1);
   let idx = -1;
   if (time) idx = bsearch(V1, time);
+  const rawIdx = idx >= 0 ? idx : (logical != null ? Math.round(logical) : -1);
   if (idx < 0 && logical != null) idx = Math.min(n - 1, Math.max(0, Math.round(logical)));
 
   dockedIndicators.forEach(d => {
     const svg = d.crossSvg;
     svg.innerHTML = '';
-    
-    if (logical != null || time != null) {
+
+    let native = false;
+    if (rawIdx >= 0 && rawIdx < n && d.seriesList.length && d.ind.spec) {
+      let price = 0;
+      for (const pl of d.ind.spec.plots) { const pv = pl.values[rawIdx]; if (isF(pv)) { price = pv; break; } }
+      try { d.chart.setCrosshairPosition(price, V1.candles[rawIdx].time, d.seriesList[0]); native = true; } catch {}
+    }
+    if (!native) { try { d.chart.clearCrosshairPosition(); } catch {} }
+
+    if (!native && (logical != null || time != null)) {
       let x = null;
       if (logical != null) {
         try { x = d.chart.timeScale().logicalToCoordinate(logical); } catch {}
@@ -2190,9 +2214,13 @@ function init() {
       v.legRaf = false;
       updateLegend(v, v.pendingParam);
       if (v === V1 && isDockActive()) {
+        const q = v.pendingParam || p;
         let logical = null;
-        if (p.point) logical = v.c.chart.timeScale().coordinateToLogical(p.point.x);
-        syncDockedCrosshair(p.time, logical);
+        if (q.point) {
+          if (q.logical != null) logical = q.logical;
+          else { const lg = v.c.chart.timeScale().coordinateToLogical(q.point.x); if (lg != null) logical = Math.round(lg); }
+        }
+        syncDockedCrosshair(q.time, logical);
       }
     });
   }));
