@@ -116,6 +116,8 @@ function initTvCrosshairSync() {
   const btnInteract = $('btnTvInteract');
 
   if (!overlay) return;
+  if (initTvCrosshairSync.ready) return;
+  initTvCrosshairSync.ready = true;
 
   function setTvSync(on) {
     tvSyncMode = on;
@@ -141,7 +143,7 @@ function initTvCrosshairSync() {
   if (btnSync) btnSync.onclick = () => { setTvSync(true); toast('✛ Dock Sync: Move mouse to inspect indicators'); };
   if (btnInteract) btnInteract.onclick = () => { setTvSync(false); toast('✏ Drawing Mode: Direct control of TradingView'); };
 
-  setTvSync(true);
+  setTvSync(false);
 
   overlay.addEventListener('wheel', e => {
     if (!tvSyncMode) return;
