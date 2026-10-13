@@ -119,10 +119,11 @@ function initTvCrosshairSync() {
   if (initTvCrosshairSync.ready) return;
   initTvCrosshairSync.ready = true;
 
-  let tvAuto = false, tvAutoTimer = null; // tvAuto = overlay stepped aside by itself (not by the user's button)
+  let tvAuto = false, tvAutoTimer = null, tvFromCanvas = false; // tvAuto = overlay stepped aside by itself (not by the user's button)
   function setTvSync(on, auto) {
     clearTimeout(tvAutoTimer);
     tvAuto = !!auto;
+    tvFromCanvas = false;
     tvSyncMode = on;
     overlay.style.pointerEvents = on ? 'auto' : 'none';
     if (btnSync && btnInteract) {
@@ -169,15 +170,21 @@ function initTvCrosshairSync() {
 
   // Hand the mouse to TradingView automatically when the user wants to use it (scroll / pinch / click / its own toolbars & dialogs)
   const tvResume = () => { if (tvAuto) setTvSync(true); };
-  const tvHandOver = ms => { if (!tvSyncMode) return; setTvSync(false, true); if (ms) tvAutoTimer = setTimeout(tvResume, ms); };
+  const tvHandOver = ms => { if (!tvSyncMode) return; setTvSync(false, true); tvFromCanvas = true; if (ms) tvAutoTimer = setTimeout(tvResume, ms); };
   overlay.addEventListener('wheel', () => tvHandOver(1500), { passive: true });
   overlay.addEventListener('pointerdown', () => tvHandOver(4000));
   window.addEventListener('blur', () => setTimeout(() => {
     if (S.replayOn || (!tvSyncMode && !tvAuto)) return;
     const f = document.activeElement;
-    if (f && f.tagName === 'IFRAME' && $('tvChartContainer').contains(f)) setTvSync(false, true);
+    if (f && f.tagName === 'IFRAME' && $('tvChartContainer').contains(f)) {
+      const fromCanvas = tvFromCanvas;               // click/drag on the chart itself -> short; its toolbars/dialogs -> long
+      setTvSync(false, true);
+      tvAutoTimer = setTimeout(tvResume, fromCanvas ? 4000 : 15000);
+    }
   }, 0));
   window.addEventListener('focus', () => { if (!S.replayOn) tvResume(); });
+  const tvWrap = $('tvEmbedWrap');
+  if (tvWrap) tvWrap.addEventListener('mouseenter', () => { if (!S.replayOn) tvResume(); }); // mouse comes back onto the chart -> sync again
 
   overlay.addEventListener('pointermove', e => {
     if (!tvSyncMode) return;
