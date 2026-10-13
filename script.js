@@ -942,7 +942,9 @@ function syncDockedChartsRange() {
   if (!dockedIndicators.length) return;
   const cs = V1.candles;
   if (!cs || !cs.length) return;
-  const range = tvDockRange(cs.length - 1);
+  let range = null;
+  if (S.replayOn) { try { range = V1.c.chart.timeScale().getVisibleLogicalRange(); } catch {} }
+  if (!range) range = tvDockRange(cs.length - 1);
   dockedIndicators.forEach(d => {
     try { d.chart.timeScale().setVisibleLogicalRange(range); } catch {}
   });
