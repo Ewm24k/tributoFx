@@ -1132,7 +1132,7 @@ function renderPositions() {
   for (const p of A.positions) {
     const mk = key => { const i = el('input', { type: 'number', step: 'any', value: p[key] != null ? (+p[key].toFixed(S.prec)) : '' }); i.addEventListener('change', () => { const v = parseFloat(i.value); p[key] = v > 0 ? v : null; syncPriceLines(); }); return i; };
     body.append(el('tr', {}, el('td', { class: p.side === 'long' ? 'up' : 'dn' }, p.side === 'long' ? 'LONG' : 'SHORT'),
-      el('td', {}, (+p.qty.toPrecision(4)).toString()), el('td', {}, fmtP(p.entry)), el('td', { id: 'pnl' + p.id }, '0'),
+      el('td', {}, lotsOf(p).toFixed(2)), el('td', {}, fmtP(p.entry)), el('td', { id: 'pnl' + p.id }, '0'),
       el('td', {}, mk('sl')), el('td', {}, mk('tp')),
       el('td', {}, el('button', { class: 'x', title: 'Close', onclick: () => closePosition(p, Pz.last, 'Manual') }, '✕'))));
   }
@@ -1404,22 +1404,32 @@ function uplOf(p) {
 function usedMargin() { return A.positions.reduce((s, p) => s + p.notional / p.lev, 0); }
 function equity() { return A.balance + A.positions.reduce((s, p) => s + uplOf(p), 0); }
 
+function contractSize(sym) {
+  if (/^XAU/.test(sym)) return 100;
+  if (/^(EUR|GBP|AUD|USD)(USD|JPY|USDT)$/.test(sym)) return 100000;
+  if (sym === 'USOIL' || sym === 'UKOIL') return 1000;
+  return 1;
+}
+const lotsOf = p => (p.lots != null ? p.lots : p.qty / contractSize(p.symbol));
+
 function openPosition(side) {
   if (!S.replayOn) return toast('Turn on Practice replay to trade');
   if (!Pz.last) return toast('No price yet');
-  const notional = parseFloat($('ordSize').value);
-  if (!(notional > 0)) return toast('Enter a size');
+  let lots = Math.round((parseFloat($('ordSize').value) || 0) * 100) / 100;
+  if (lots < 0.01) { lots = 0.01; $('ordSize').value = '0.01'; toast('Minimum lot is 0.01'); }
+
+  const execPrice = side === 'long' ? (Pz.ask || Pz.last) : (Pz.bid || Pz.last);
+  const qty = lots * contractSize(S.symbol), notional = qty * execPrice;
   const lev = levX(), margin = notional / lev;
   if (margin > equity() - usedMargin()) return toast('Not enough free margin');
-  
-  const execPrice = side === 'long' ? (Pz.ask || Pz.last) : (Pz.bid || Pz.last);
+
   const fee = notional * feePct() / 100;
   const slPct = parseFloat($('ordSL').value), tpPct = parseFloat($('ordTP').value), d = side === 'long' ? 1 : -1;
-  const pos = { id: A.nextId++, symbol: S.symbol, side, qty: notional / execPrice, notional, lev, entry: execPrice, fees: fee, openTime: Pz.time,
+  const pos = { id: A.nextId++, symbol: S.symbol, side, lots, qty, notional, lev, entry: execPrice, fees: fee, openTime: Pz.time,
     sl: slPct > 0 ? execPrice * (1 - d * slPct / 100) : null, tp: tpPct > 0 ? execPrice * (1 + d * tpPct / 100) : null };
   A.balance -= fee; A.positions.push(pos); saveAcct();
   syncPriceLines(); renderPositions(); updateAll(); try { refreshMarkers(true); } catch {}
-  toast(`Filled: ${side.toUpperCase()} @ ${fmtP(execPrice)}`);
+  toast(`Filled: ${side.toUpperCase()} ${lots.toFixed(2)} lot @ ${fmtP(execPrice)}`);
 }
 
 function closePosition(pos, price, reason) {
@@ -1498,7 +1508,7 @@ function placePos(v, p, e) {
     if (textEl.textContent !== text) textEl.textContent = text;
   };
   const info = (name, price) => `${name} · ${(Math.abs(price - p.entry) / pipSize(p.entry)).toFixed(1)} pips · ${signed(levelPnl(p, price))}`;
-  put(e.eLine, e.eChip, e.eT, p.entry, `${p.side === 'long' ? 'LONG' : 'SHORT'} ${+p.qty.toPrecision(4)} · ${signed(uplOf(p))}`, col);
+  put(e.eLine, e.eChip, e.eT, p.entry, `${p.side === 'long' ? 'LONG' : 'SHORT'} ${lotsOf(p).toFixed(2)} lot · ${signed(uplOf(p))}`, col);
   e.bTP.style.display = e.bSL.style.display = p.ui ? '' : 'none';
   put(e.tLine, e.tChip, e.tT, p.tp, p.tp != null ? info('TP', p.tp) : '', C.up);
   put(e.sLine, e.sChip, e.sT, p.sl, p.sl != null ? info('SL', p.sl) : '', C.dn);
