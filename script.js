@@ -600,9 +600,11 @@ const BUILTIN = {
   }
 };
 
+/* Dock is controlled ONLY by the "Dock Left" button (S.dockInd).
+   ON  = all bottom indicators go to the left dock.
+   OFF = all indicators stay on the chart. */
 function isDockActive() {
-  const bottomCount = (typeof V1 !== 'undefined' && V1.IND) ? V1.IND.filter(i => i.spec && !i.spec.overlay).length : 0;
-  return (typeof S !== 'undefined' && S.dockInd) || bottomCount > 3;
+  return typeof S !== 'undefined' && !!S.dockInd;
 }
 window.isDockActive = isDockActive;
 
