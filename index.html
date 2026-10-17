@@ -199,7 +199,7 @@
         </div>
 
         <div class="grid2">
-          <div class="field"><label>Size (USDT notional)</label><input id="ordSize" type="number" min="1" step="any" value="1000"></div>
+          <div class="field"><label>Lot size</label><input id="ordSize" type="number" min="0.01" step="0.01" value="0.01" list="lotList"><datalist id="lotList"><option value="0.01"><option value="0.10"><option value="1.00"><option value="10.00"><option value="100.00"></datalist></div>
           <div class="field"><label>Leverage (x)</label><input id="ordLev" type="number" min="1" max="500" step="1" value="10"></div>
           <div class="field"><label>Stop loss (%)</label><input id="ordSL" type="number" min="0" step="any" placeholder="optional"></div>
           <div class="field"><label>Take profit (%)</label><input id="ordTP" type="number" min="0" step="any" placeholder="optional"></div>
@@ -222,7 +222,7 @@
         <button id="tabHist">History</button>
       </div>
       <div class="tabbody" id="panePos">
-        <table><thead><tr><th>Side</th><th>Qty</th><th>Entry</th><th>P/L</th><th>SL</th><th>TP</th><th></th></tr></thead><tbody id="posBody"></tbody></table>
+        <table><thead><tr><th>Side</th><th>Lots</th><th>Entry</th><th>P/L</th><th>SL</th><th>TP</th><th></th></tr></thead><tbody id="posBody"></tbody></table>
       </div>
       <div class="tabbody" id="paneHist" hidden>
         <div class="grid2" id="stats" style="margin-bottom:8px"></div>
@@ -273,7 +273,7 @@
     <div class="mhead"><span id="indTitle">Indicators</span><button class="btn" data-close>✕</button></div>
     <div class="mbody">
       <div><h5>Add Indicator (Built-in &amp; MT5 Suite)</h5><div class="chips" id="indAvail"></div>
-        <p class="muted" style="margin-top:14px">Indicators auto-dock to the left when you have more than 3 active indicators.</p></div>
+        <p class="muted" style="margin-top:14px">Use the ⧉ Dock Left button in the top bar to move all indicators to the left dock (ON) or back onto the chart (OFF).</p></div>
       <div><h5>On chart</h5><button class="btn" id="btnCopyInd2" style="margin-bottom:8px">⇉ Apply all A → B</button><div id="indActive"></div></div>
     </div>
   </div>
